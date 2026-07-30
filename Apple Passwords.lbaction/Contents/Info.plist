@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIconFile</key>
+	<string>com.apple.Passwords</string>
+	<key>CFBundleIdentifier</key>
+	<string>ca.andrewlaunchbar.action.apple-passwords</string>
+	<key>CFBundleName</key>
+	<string>Apple Passwords</string>
+	<key>CFBundleVersion</key>
+	<string>0.2.0</string>
+	<key>LBDescription</key>
+	<dict>
+		<key>LBAuthor</key>
+		<string>Andrew</string>
+		<key>LBSummary</key>
+		<string>Find Apple Passwords accounts by domain or indexed fragment using APW</string>
+		<key>LBWebsiteURL</key>
+		<string>https://github.com/andesco/launchbar-apple-passwords</string>
+	</dict>
+	<key>LBScripts</key>
+	<dict>
+		<key>LBDefaultScript</key>
+		<dict>
+			<key>LBAcceptedArgumentTypes</key>
+			<array>
+				<string>string</string>
+			</array>
+			<key>LBKeepWindowActive</key>
+			<true/>
+			<key>LBRequiresArgument</key>
+			<true/>
+			<key>LBResultType</key>
+			<string>unknown</string>
+			<key>LBReturnsResult</key>
+			<true/>
+			<key>LBScriptName</key>
+			<string>default.js</string>
+		</dict>
+	</dict>
+	<key>LBTextInputTitle</key>
+	<string>Enter a domain or indexed domain fragment</string>
+</dict>
+</plist>

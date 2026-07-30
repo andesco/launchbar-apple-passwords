@@ -1,0 +1,10 @@
+{
+  "name": "launchbar-apple-passwords",
+  "version": "0.2.0",
+  "private": true,
+  "scripts": {
+    "build": "scripts/package.sh",
+    "release": "scripts/release.sh",
+    "test": "node --test"
+  }
+}
