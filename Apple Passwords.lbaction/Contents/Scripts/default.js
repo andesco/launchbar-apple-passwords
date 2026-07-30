@@ -322,13 +322,7 @@ function beginAuthentication(path, resume) {
     resume: resume,
   };
 
-  try {
-    LaunchBar.performAction("Apple Passwords");
-  } catch (error) {
-    LaunchBar.openCommandURL(
-      "select?abbreviation=" + encodeURIComponent("Apple Passwords")
-    );
-  }
+  focusAuthenticationInput();
 
   return {
     ok: false,
@@ -336,6 +330,23 @@ function beginAuthentication(path, resume) {
     authenticationPending: true,
     error: "Enter the six-digit APW PIN in LaunchBar.",
   };
+}
+
+function focusAuthenticationInput() {
+  LaunchBar.openCommandURL(
+    "select?abbreviation=" + encodeURIComponent("Apple Passwords")
+  );
+
+  try {
+    LaunchBar.executeAppleScript(
+      "delay 0.2",
+      'tell application "System Events" to key code 49'
+    );
+  } catch (error) {
+    LaunchBar.log(
+      "Could not open APW PIN text entry automatically: " + error.message
+    );
+  }
 }
 
 function readPendingAuthentication() {

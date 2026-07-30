@@ -22,6 +22,7 @@ function actionContext(options = {}) {
   const commandURLs = [];
   const pasted = [];
   const performedActions = [];
+  const scriptCalls = [];
   let storedIndex = [];
   const context = vm.createContext({
     console,
@@ -93,6 +94,9 @@ function actionContext(options = {}) {
       performAction(name) {
         performedActions.push(name);
       },
+      executeAppleScript(...lines) {
+        scriptCalls.push(lines);
+      },
       openCommandURL(url) {
         commandURLs.push(url);
       },
@@ -121,6 +125,7 @@ function actionContext(options = {}) {
     context,
     pasted,
     performedActions,
+    scriptCalls,
   };
 }
 
@@ -201,7 +206,7 @@ test("invalid URL input never invokes APW", () => {
 
 test("an invalid APW session authenticates and retries the lookup", () => {
   let lookupAttempts = 0;
-  const { calls, context, performedActions } = actionContext({
+  const { calls, commandURLs, context, scriptCalls } = actionContext({
     apwResponse(args) {
       const command = args.join(" ");
       if (command === "pw list example.com" && lookupAttempts++ === 0) {
@@ -230,7 +235,10 @@ test("an invalid APW session authenticates and retries the lookup", () => {
 
   const initialResult = context.run("example.com");
   assert.equal(initialResult, undefined);
-  assert.deepEqual(performedActions, ["Apple Passwords"]);
+  assert.deepEqual(commandURLs, [
+    "select?abbreviation=Apple%20Passwords",
+  ]);
+  assert.equal(scriptCalls.length, 1);
 
   const results = context.run("482913");
   assert.equal(results[0].title, "root");
@@ -245,7 +253,7 @@ test("an invalid APW session authenticates and retries the lookup", () => {
 
 test("secret retrieval authenticates and retries before pasting", () => {
   let passwordAttempts = 0;
-  const { calls, context, pasted, performedActions } = actionContext({
+  const { calls, commandURLs, context, pasted } = actionContext({
     apwResponse(args) {
       const command = args.join(" ");
       if (command === "pw list example.com") {
@@ -289,7 +297,9 @@ test("secret retrieval authenticates and retries before pasting", () => {
   );
   context.pastePassword(passwordField.actionArgument);
 
-  assert.deepEqual(performedActions, ["Apple Passwords"]);
+  assert.deepEqual(commandURLs, [
+    "select?abbreviation=Apple%20Passwords",
+  ]);
   assert.deepEqual(pasted, []);
 
   context.run("482913");
@@ -304,7 +314,7 @@ test("secret retrieval authenticates and retries before pasting", () => {
 });
 
 test("an incomplete PIN keeps the pending authentication available", () => {
-  const { calls, context, performedActions } = actionContext({
+  const { calls, commandURLs, context } = actionContext({
     apwResponse(args) {
       if (args.join(" ") === "auth request") return { status: 0 };
       return { status: 9, error: "Invalid session" };
@@ -315,7 +325,9 @@ test("an incomplete PIN keeps the pending authentication available", () => {
   const results = context.run("123");
 
   assert.equal(results[0].title, "Invalid APW PIN");
-  assert.deepEqual(performedActions, ["Apple Passwords"]);
+  assert.deepEqual(commandURLs, [
+    "select?abbreviation=Apple%20Passwords",
+  ]);
   assert.ok(context.Action.preferences.pendingAuthentication);
   assert.deepEqual(calls.map(apwArguments), [
     ["pw", "list", "example.com"],
