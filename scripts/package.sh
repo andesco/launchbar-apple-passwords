@@ -10,7 +10,7 @@ dist_path="$repo_root/dist"
 
 cd "$repo_root"
 
-package_version=$(node -p 'require("./package.json").version')
+package_version=$(bun -e 'console.log(require("./package.json").version)')
 bundle_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist_path")
 
 if [[ "$package_version" != "$bundle_version" ]]; then
@@ -19,7 +19,7 @@ if [[ "$package_version" != "$bundle_version" ]]; then
 fi
 
 /usr/bin/plutil -lint "$plist_path"
-npm test
+bun run test
 
 /bin/mkdir -p "$dist_path"
 archive_path="$dist_path/Apple-Passwords-v${package_version}.lbaction.zip"

@@ -2,8 +2,14 @@
   "name": "launchbar-apple-passwords",
   "version": "0.2.0",
   "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andesco/launchbar-apple-passwords.git"
+  },
   "scripts": {
     "build": "scripts/package.sh",
+    "publish": "scripts/publish.sh",
     "release": "scripts/release.sh",
     "test": "node --test"
   }

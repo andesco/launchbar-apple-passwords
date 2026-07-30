@@ -39,8 +39,8 @@ LaunchBar runs, so there is nothing to compile.
 To review, test, and package the source yourself:
 
 ```sh
-npm test
-npm run build
+bun run test
+bun run build
 ```
 
 The build command validates and tests the action, then creates a versioned
@@ -97,16 +97,34 @@ Generated ZIP files are ignored and attached to GitHub Releases instead.
 Build a ZIP for the current version:
 
 ```sh
-npm run build
+bun run build
 ```
 
-Prepare a new version and build its ZIP:
+Prepare a new version locally:
 
 ```sh
-npm run release -- 0.3.0
+bun run release -- 0.3.0
 ```
 
-The release command updates the version in both `package.json` and the
-LaunchBar bundle, then runs the same validation, tests, and packaging steps.
-Review and commit those version changes before tagging the release and
-uploading the ZIP from `dist/`.
+The release command:
+
+1. Updates the version in both `package.json` and the LaunchBar bundle.
+2. Validates, tests, and packages the action.
+3. Commits the version change and creates the corresponding Git tag.
+
+It does not connect to GitHub. This provides an opportunity to review the commit,
+tag, and ZIP before publication.
+
+Publish the prepared version:
+
+```sh
+bun run publish -- 0.3.0
+```
+
+The publish command requires an authenticated
+[GitHub CLI](https://cli.github.com/). It verifies the prepared version and tag,
+rebuilds and tests the ZIP, creates the public GitHub repository if necessary,
+pushes the branch and tag, and creates or updates the GitHub Release.
+
+The working tree must be clean before running `release` or `publish`. `build`
+never commits, tags, pushes, or uploads anything.
