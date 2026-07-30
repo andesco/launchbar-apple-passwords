@@ -19,9 +19,10 @@ brew services start apw
 ```
 
 APW must be authenticated again whenever its daemon restarts. When that is
-needed, the action automatically requests authentication, asks for the
-six-digit PIN shown by macOS, submits it to APW, and retries the original
-lookup. Terminal is not required for authentication.
+needed, the action automatically requests authentication and redirects its
+LaunchBar text field to accept the six-digit PIN shown by macOS. It submits the
+PIN and resumes the original lookup or paste operation. Terminal is not
+required for authentication.
 
 ## Install the action
 

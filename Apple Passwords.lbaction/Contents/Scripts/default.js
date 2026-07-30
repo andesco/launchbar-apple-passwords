@@ -6,9 +6,24 @@ var APW_PATHS = [
   "/opt/local/bin/apw",
 ];
 var APW_INVALID_SESSION = 9;
-var AUTH_CANCELLED_MARKER = "__APW_AUTH_CANCELLED__";
+var AUTHENTICATION_TIMEOUT_MS = 2 * 60 * 1000;
 
 function run(argument) {
+  var pendingAuthentication = readPendingAuthentication();
+  var pendingInput = String(argument || "").trim();
+  if (pendingAuthentication && /^\d{6}$/.test(pendingInput)) {
+    return completeAuthentication(pendingInput, pendingAuthentication);
+  }
+  if (pendingAuthentication && /^\d+$/.test(pendingInput)) {
+    return [
+      messageItem(
+        "Invalid APW PIN",
+        "Enter the complete six-digit PIN shown by macOS."
+      ),
+    ];
+  }
+  if (pendingAuthentication) clearPendingAuthentication();
+
   var query;
   try {
     query = normalizeQuery(argument);
@@ -43,13 +58,19 @@ function run(argument) {
   var passwords = tryApwWithAuthentication(
     apwPath,
     ["pw", "list", query],
-    authState
+    authState,
+    { type: "lookup", query: query }
   );
   var oneTimeCodes = tryApwWithAuthentication(
     apwPath,
     ["otp", "list", query],
-    authState
+    authState,
+    { type: "lookup", query: query }
   );
+
+  if (passwords.authenticationPending || oneTimeCodes.authenticationPending) {
+    return;
+  }
 
   if (!passwords.ok && !oneTimeCodes.ok) {
     return [
@@ -146,8 +167,10 @@ function pastePassword(record) {
   var response = tryApwWithAuthentication(
     apwPath,
     ["pw", "get", record.domain, record.username],
-    {}
+    {},
+    { type: "password", record: record }
   );
+  if (response.authenticationPending) return;
   if (!response.ok) return notifyFailure(response.error);
 
   var entry = selectSecretEntry(response.data.results, record);
@@ -164,8 +187,10 @@ function pasteOtp(record) {
   var response = tryApwWithAuthentication(
     apwPath,
     ["otp", "get", record.domain],
-    {}
+    {},
+    { type: "otp", record: record }
   );
+  if (response.authenticationPending) return;
   if (!response.ok) return notifyFailure(response.error);
 
   var entry = selectSecretEntry(response.data.results, record);
@@ -259,7 +284,7 @@ function tryApw(path, args) {
   }
 }
 
-function tryApwWithAuthentication(path, args, state) {
+function tryApwWithAuthentication(path, args, state, resume) {
   state = state || {};
   if (state.failure) return state.failure;
 
@@ -269,16 +294,17 @@ function tryApwWithAuthentication(path, args, state) {
   if (state.attempted) return response;
   state.attempted = true;
 
-  var authentication = authenticateApw(path);
+  var authentication = beginAuthentication(path, resume);
   if (!authentication.ok) {
     state.failure = authentication;
     return authentication;
   }
 
-  return tryApw(path, args);
+  state.failure = authentication;
+  return authentication;
 }
 
-function authenticateApw(path) {
+function beginAuthentication(path, resume) {
   var challenge = tryApw(path, ["auth", "request"]);
   if (!challenge.ok) {
     return {
@@ -291,57 +317,82 @@ function authenticateApw(path) {
     };
   }
 
-  var pin = promptForAuthenticationPin();
-  if (!pin) {
-    return {
-      ok: false,
-      status: APW_INVALID_SESSION,
-      error: "APW authentication was cancelled.",
-    };
-  }
+  Action.preferences.pendingAuthentication = {
+    createdAt: Date.now(),
+    resume: resume,
+  };
 
-  var response = tryApw(path, ["auth", "response", "--pin", pin]);
-  if (!response.ok) {
-    return {
-      ok: false,
-      status: response.status,
-      error: response.error || "APW authentication failed.",
-    };
-  }
-  return response;
-}
-
-function promptForAuthenticationPin() {
-  while (true) {
-    var result;
-    try {
-      result = String(
-        LaunchBar.executeAppleScript(
-          'try\n' +
-            'set authResult to display dialog "Enter the six-digit PIN shown by macOS." ' +
-            'default answer "" buttons {"Cancel", "Authenticate"} ' +
-            'default button "Authenticate" cancel button "Cancel" ' +
-            'with title "Authenticate APW"\n' +
-            "return text returned of authResult\n" +
-            "on error number -128\n" +
-            'return "' +
-            AUTH_CANCELLED_MARKER +
-            '"\n' +
-            "end try"
-        )
-      ).trim();
-    } catch (error) {
-      return null;
-    }
-
-    if (result === AUTH_CANCELLED_MARKER) return null;
-    if (/^\d{6}$/.test(result)) return result;
-
-    LaunchBar.alert(
-      "Invalid APW PIN",
-      "Enter the six-digit PIN shown in the macOS authentication dialog."
+  try {
+    LaunchBar.performAction("Apple Passwords");
+  } catch (error) {
+    LaunchBar.openCommandURL(
+      "select?abbreviation=" + encodeURIComponent("Apple Passwords")
     );
   }
+
+  return {
+    ok: false,
+    status: APW_INVALID_SESSION,
+    authenticationPending: true,
+    error: "Enter the six-digit APW PIN in LaunchBar.",
+  };
+}
+
+function readPendingAuthentication() {
+  var pending = Action.preferences.pendingAuthentication;
+  if (
+    !pending ||
+    !pending.resume ||
+    !pending.createdAt ||
+    Date.now() - pending.createdAt > AUTHENTICATION_TIMEOUT_MS
+  ) {
+    clearPendingAuthentication();
+    return null;
+  }
+  return pending;
+}
+
+function clearPendingAuthentication() {
+  Action.preferences.pendingAuthentication = null;
+}
+
+function completeAuthentication(pin, pending) {
+  var apwPath = findApw();
+  if (!apwPath) {
+    clearPendingAuthentication();
+    return [messageItem("APW was not found", "Install APW and try again.")];
+  }
+
+  var response = tryApw(apwPath, ["auth", "response", "--pin", pin]);
+  clearPendingAuthentication();
+  if (!response.ok) {
+    return [
+      messageItem(
+        "APW authentication failed",
+        response.error || "Run the lookup again to request a new PIN."
+      ),
+    ];
+  }
+
+  var resume = pending.resume;
+  if (resume.type === "lookup") {
+    return run(resume.query);
+  }
+  if (resume.type === "password") {
+    pastePassword(resume.record);
+    return;
+  }
+  if (resume.type === "otp") {
+    pasteOtp(resume.record);
+    return;
+  }
+
+  return [
+    messageItem(
+      "APW authenticated",
+      "Run your Apple Passwords lookup again."
+    ),
+  ];
 }
 
 function messageItem(title, subtitle) {

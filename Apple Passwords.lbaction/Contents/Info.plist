@@ -40,6 +40,6 @@
 		</dict>
 	</dict>
 	<key>LBTextInputTitle</key>
-	<string>Enter a domain or indexed domain fragment</string>
+	<string>Domain, fragment, or APW PIN</string>
 </dict>
 </plist>

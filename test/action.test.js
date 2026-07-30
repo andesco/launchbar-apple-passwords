@@ -18,10 +18,10 @@ function actionContext(options = {}) {
     "Contents",
     "Scripts"
   );
-  const alerts = [];
   const calls = [];
+  const commandURLs = [];
   const pasted = [];
-  const prompts = [];
+  const performedActions = [];
   let storedIndex = [];
   const context = vm.createContext({
     console,
@@ -38,6 +38,7 @@ function actionContext(options = {}) {
       },
     },
     Action: {
+      preferences: {},
       supportPath: "/tmp/apple-passwords-launchbar-test",
     },
     LaunchBar: {
@@ -89,12 +90,11 @@ function actionContext(options = {}) {
         }
         throw new Error(`Unexpected APW command: ${command}`);
       },
-      executeAppleScript(script) {
-        prompts.push(script);
-        return options.pinResponse || "123456";
+      performAction(name) {
+        performedActions.push(name);
       },
-      alert(...args) {
-        alerts.push(args);
+      openCommandURL(url) {
+        commandURLs.push(url);
       },
       hide() {
         throw new Error("LaunchBar.hide() must not be called before paste");
@@ -115,7 +115,13 @@ function actionContext(options = {}) {
     fs.readFileSync(path.join(scripts, "default.js"), "utf8"),
     context
   );
-  return { alerts, calls, context, pasted, prompts };
+  return {
+    calls,
+    commandURLs,
+    context,
+    pasted,
+    performedActions,
+  };
 }
 
 test("the action lists exact and subdomain matches without fetching secrets", () => {
@@ -195,8 +201,7 @@ test("invalid URL input never invokes APW", () => {
 
 test("an invalid APW session authenticates and retries the lookup", () => {
   let lookupAttempts = 0;
-  const { calls, context, prompts } = actionContext({
-    pinResponse: "482913",
+  const { calls, context, performedActions } = actionContext({
     apwResponse(args) {
       const command = args.join(" ");
       if (command === "pw list example.com" && lookupAttempts++ === 0) {
@@ -223,10 +228,12 @@ test("an invalid APW session authenticates and retries the lookup", () => {
     },
   });
 
-  const results = context.run("example.com");
+  const initialResult = context.run("example.com");
+  assert.equal(initialResult, undefined);
+  assert.deepEqual(performedActions, ["Apple Passwords"]);
 
+  const results = context.run("482913");
   assert.equal(results[0].title, "root");
-  assert.equal(prompts.length, 1);
   assert.deepEqual(calls.map(apwArguments), [
     ["pw", "list", "example.com"],
     ["auth", "request"],
@@ -238,8 +245,7 @@ test("an invalid APW session authenticates and retries the lookup", () => {
 
 test("secret retrieval authenticates and retries before pasting", () => {
   let passwordAttempts = 0;
-  const { calls, context, pasted, prompts } = actionContext({
-    pinResponse: "482913",
+  const { calls, context, pasted, performedActions } = actionContext({
     apwResponse(args) {
       const command = args.join(" ");
       if (command === "pw list example.com") {
@@ -283,7 +289,11 @@ test("secret retrieval authenticates and retries before pasting", () => {
   );
   context.pastePassword(passwordField.actionArgument);
 
-  assert.equal(prompts.length, 1);
+  assert.deepEqual(performedActions, ["Apple Passwords"]);
+  assert.deepEqual(pasted, []);
+
+  context.run("482913");
+
   assert.deepEqual(pasted, ["secret"]);
   assert.deepEqual(calls.map(apwArguments).slice(-4), [
     ["pw", "get", "example.com", "root"],
@@ -293,28 +303,68 @@ test("secret retrieval authenticates and retries before pasting", () => {
   ]);
 });
 
-test("cancelling authentication does not trigger another challenge", () => {
-  const { calls, context, prompts } = actionContext({
-    pinResponse: "__APW_AUTH_CANCELLED__",
+test("an incomplete PIN keeps the pending authentication available", () => {
+  const { calls, context, performedActions } = actionContext({
     apwResponse(args) {
       if (args.join(" ") === "auth request") return { status: 0 };
       return { status: 9, error: "Invalid session" };
     },
   });
 
-  const results = context.run("example.com");
+  assert.equal(context.run("example.com"), undefined);
+  const results = context.run("123");
 
-  assert.equal(results[0].title, "APW is unavailable");
-  assert.match(results[0].subtitle, /cancelled/i);
-  assert.equal(prompts.length, 1);
+  assert.equal(results[0].title, "Invalid APW PIN");
+  assert.deepEqual(performedActions, ["Apple Passwords"]);
+  assert.ok(context.Action.preferences.pendingAuthentication);
   assert.deepEqual(calls.map(apwArguments), [
     ["pw", "list", "example.com"],
     ["auth", "request"],
   ]);
 });
 
+test("a new domain abandons a pending authentication and starts a new lookup", () => {
+  const { calls, context } = actionContext({
+    apwResponse(args) {
+      const command = args.join(" ");
+      if (command === "pw list example.com") {
+        return { status: 9, error: "Invalid session" };
+      }
+      if (command === "auth request") return { status: 0 };
+      if (command === "pw list other.test") {
+        return {
+          status: 0,
+          results: [
+            {
+              username: "other",
+              domain: "other.test",
+              sites: ["other.test"],
+            },
+          ],
+        };
+      }
+      if (command === "otp list other.test") {
+        return { status: 0, results: [] };
+      }
+      throw new Error(`Unexpected APW command: ${command}`);
+    },
+  });
+
+  assert.equal(context.run("example.com"), undefined);
+  const results = context.run("other.test");
+
+  assert.equal(results[0].title, "other");
+  assert.equal(context.Action.preferences.pendingAuthentication, null);
+  assert.deepEqual(calls.map(apwArguments), [
+    ["pw", "list", "example.com"],
+    ["auth", "request"],
+    ["pw", "list", "other.test"],
+    ["otp", "list", "other.test"],
+  ]);
+});
+
 test("an unavailable daemon does not prompt for a PIN", () => {
-  const { calls, context, prompts } = actionContext({
+  const { calls, context, performedActions } = actionContext({
     apwResponse() {
       return { status: 9, error: "Invalid session" };
     },
@@ -324,7 +374,7 @@ test("an unavailable daemon does not prompt for a PIN", () => {
 
   assert.equal(results[0].title, "APW is unavailable");
   assert.match(results[0].subtitle, /service and browser extension/i);
-  assert.equal(prompts.length, 0);
+  assert.equal(performedActions.length, 0);
   assert.deepEqual(calls.map(apwArguments), [
     ["pw", "list", "example.com"],
     ["auth", "request"],
