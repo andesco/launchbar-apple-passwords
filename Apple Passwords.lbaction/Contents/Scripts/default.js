@@ -5,6 +5,8 @@ var APW_PATHS = [
   "/usr/local/bin/apw",
   "/opt/local/bin/apw",
 ];
+var APW_INVALID_SESSION = 9;
+var AUTH_CANCELLED_MARKER = "__APW_AUTH_CANCELLED__";
 
 function run(argument) {
   var query;
@@ -37,8 +39,17 @@ function run(argument) {
     ];
   }
 
-  var passwords = tryApw(apwPath, ["pw", "list", query]);
-  var oneTimeCodes = tryApw(apwPath, ["otp", "list", query]);
+  var authState = {};
+  var passwords = tryApwWithAuthentication(
+    apwPath,
+    ["pw", "list", query],
+    authState
+  );
+  var oneTimeCodes = tryApwWithAuthentication(
+    apwPath,
+    ["otp", "list", query],
+    authState
+  );
 
   if (!passwords.ok && !oneTimeCodes.ok) {
     return [
@@ -46,7 +57,7 @@ function run(argument) {
         "APW is unavailable",
         passwords.error ||
           oneTimeCodes.error ||
-          "Run “brew services start apw”, then “apw auth” in Terminal."
+          "Make sure the APW service and its browser extension are running."
       ),
     ];
   }
@@ -132,12 +143,11 @@ function pastePassword(record) {
   var apwPath = findApw();
   if (!apwPath) return notifyFailure("APW was not found.");
 
-  var response = tryApw(apwPath, [
-    "pw",
-    "get",
-    record.domain,
-    record.username,
-  ]);
+  var response = tryApwWithAuthentication(
+    apwPath,
+    ["pw", "get", record.domain, record.username],
+    {}
+  );
   if (!response.ok) return notifyFailure(response.error);
 
   var entry = selectSecretEntry(response.data.results, record);
@@ -151,7 +161,11 @@ function pasteOtp(record) {
   var apwPath = findApw();
   if (!apwPath) return notifyFailure("APW was not found.");
 
-  var response = tryApw(apwPath, ["otp", "get", record.domain]);
+  var response = tryApwWithAuthentication(
+    apwPath,
+    ["otp", "get", record.domain],
+    {}
+  );
   if (!response.ok) return notifyFailure(response.error);
 
   var entry = selectSecretEntry(response.data.results, record);
@@ -202,7 +216,13 @@ function findApw() {
 }
 
 function executeApw(path, args) {
-  var command = [path].concat(args);
+  var command = [
+    "/bin/sh",
+    "-c",
+    '"$@" 2>&1; exit 0',
+    "apw-launchbar",
+    path,
+  ].concat(args);
   var output = LaunchBar.execute.apply(LaunchBar, command);
   var lines = String(output || "").trim().split(/\r?\n/);
 
@@ -222,6 +242,7 @@ function tryApw(path, args) {
     if (data.status !== 0) {
       return {
         ok: false,
+        status: data.status,
         error: data.error || "APW returned status " + data.status + ".",
       };
     }
@@ -229,11 +250,97 @@ function tryApw(path, args) {
   } catch (error) {
     return {
       ok: false,
+      status: null,
       error:
         error && error.message
           ? error.message
-          : "Run “brew services start apw”, then “apw auth” in Terminal.",
+          : "Make sure the APW service and its browser extension are running.",
     };
+  }
+}
+
+function tryApwWithAuthentication(path, args, state) {
+  state = state || {};
+  if (state.failure) return state.failure;
+
+  var response = tryApw(path, args);
+  if (response.ok || response.status !== APW_INVALID_SESSION) return response;
+
+  if (state.attempted) return response;
+  state.attempted = true;
+
+  var authentication = authenticateApw(path);
+  if (!authentication.ok) {
+    state.failure = authentication;
+    return authentication;
+  }
+
+  return tryApw(path, args);
+}
+
+function authenticateApw(path) {
+  var challenge = tryApw(path, ["auth", "request"]);
+  if (!challenge.ok) {
+    return {
+      ok: false,
+      status: challenge.status,
+      error:
+        challenge.status === APW_INVALID_SESSION
+          ? "APW could not start authentication. Make sure its service and browser extension are running."
+          : challenge.error,
+    };
+  }
+
+  var pin = promptForAuthenticationPin();
+  if (!pin) {
+    return {
+      ok: false,
+      status: APW_INVALID_SESSION,
+      error: "APW authentication was cancelled.",
+    };
+  }
+
+  var response = tryApw(path, ["auth", "response", "--pin", pin]);
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: response.error || "APW authentication failed.",
+    };
+  }
+  return response;
+}
+
+function promptForAuthenticationPin() {
+  while (true) {
+    var result;
+    try {
+      result = String(
+        LaunchBar.executeAppleScript(
+          'try\n' +
+            'set authResult to display dialog "Enter the six-digit PIN shown by macOS." ' +
+            'default answer "" buttons {"Cancel", "Authenticate"} ' +
+            'default button "Authenticate" cancel button "Cancel" ' +
+            'with title "Authenticate APW"\n' +
+            "return text returned of authResult\n" +
+            "on error number -128\n" +
+            'return "' +
+            AUTH_CANCELLED_MARKER +
+            '"\n' +
+            "end try"
+        )
+      ).trim();
+    } catch (error) {
+      return null;
+    }
+
+    if (result === AUTH_CANCELLED_MARKER) return null;
+    if (/^\d{6}$/.test(result)) return result;
+
+    LaunchBar.alert(
+      "Invalid APW PIN",
+      "Enter the six-digit PIN shown in the macOS authentication dialog."
+    );
   }
 }
 

@@ -16,10 +16,12 @@ Install and start APW:
 ```sh
 brew install bendews/homebrew-tap/apw
 brew services start apw
-apw auth
 ```
 
-APW must be authenticated again whenever its daemon restarts.
+APW must be authenticated again whenever its daemon restarts. When that is
+needed, the action automatically requests authentication, asks for the
+six-digit PIN shown by macOS, submits it to APW, and retries the original
+lookup. Terminal is not required for authentication.
 
 ## Install the action
 
