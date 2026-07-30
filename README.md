@@ -123,8 +123,8 @@ bun run publish -- 0.3.0
 
 The publish command requires an authenticated
 [GitHub CLI](https://cli.github.com/). It verifies the prepared version and tag,
-rebuilds and tests the ZIP, creates the public GitHub repository if necessary,
-pushes the branch and tag, and creates or updates the GitHub Release.
+rebuilds and tests the ZIP, pushes the branch and tag to the existing `origin`
+remote, and creates or updates the GitHub Release.
 
 The working tree must be clean before running `release` or `publish`. `build`
 never commits, tags, pushes, or uploads anything.

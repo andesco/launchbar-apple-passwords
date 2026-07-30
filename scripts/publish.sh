@@ -14,7 +14,6 @@ if [[ ! "$version" =~ '^[0-9]+\.[0-9]+\.[0-9]+$' ]]; then
 fi
 
 repo_root=${0:A:h:h}
-repo_slug='andesco/launchbar-apple-passwords'
 plist_path="$repo_root/Apple Passwords.lbaction/Contents/Info.plist"
 tag="v$version"
 archive_path="$repo_root/dist/Apple-Passwords-v${version}.lbaction.zip"
@@ -59,15 +58,12 @@ if [[ "$(git rev-list -n 1 "$tag")" != "$(git rev-parse HEAD)" ]]; then
   exit 1
 fi
 
-bun run build
-
 if ! git remote get-url origin >/dev/null 2>&1; then
-  if gh repo view "$repo_slug" >/dev/null 2>&1; then
-    git remote add origin "https://github.com/$repo_slug.git"
-  else
-    gh repo create "$repo_slug" --public --source=. --remote=origin
-  fi
+  print -u2 "No origin remote is configured. Add the GitHub repository as origin first."
+  exit 1
 fi
+
+bun run build
 
 git push -u origin HEAD
 git push origin "$tag"
@@ -80,6 +76,8 @@ else
     --generate-notes
 fi
 
+release_url=$(gh release view "$tag" --json url --jq '.url')
+
 print
 print "Published Apple Passwords LaunchBar Action $version:"
-print "  https://github.com/$repo_slug/releases/tag/$tag"
+print "  $release_url"
