@@ -8,60 +8,39 @@ A LaunchBar action that finds Apple Passwords entries for a domain using
 - macOS 14 or newer
 - LaunchBar 6
 - APW 1.1.0 or newer
-- One of APW's supported Chromium-based browsers with Apple's iCloud Passwords
-  extension installed
+- A supported [Chromium-based browser](https://github.com/bendews/apw#getting-started)
+- Apple’s [iCloud Passwords extension](https://chromewebstore.google.com/detail/icloud-passwords/pejdijmoenmkgeppbflobdenhhabjlaj)
 
-Install and start APW:
+Install and start `apw`:
 
 ```sh
 brew install bendews/homebrew-tap/apw
 brew services start apw
 ```
 
-APW must be authenticated again whenever its daemon restarts. When that is
-needed, the action automatically requests an Apple Passwords verification code.
-LaunchBar then shows **Enter verification code** as an action
-result. Press Return to open its fresh six-digit code field, enter the code shown
-by macOS, and press Return again. Password and one-time-code pastes resume
-automatically. If LaunchBar does not restore a domain lookup’s result list, run
-that domain lookup again. Terminal is not required.
-
 ## Install the action
 
-### From a release
+[Download the latest release](https://github.com/andesco/launchbar-apple-passwords/releases/download/v0.5.0/Apple-Passwords-v0.5.0.lbaction.zip). Open both actions and confirm that each is installed in LaunchBar:
 
-Download `Apple-Passwords-vX.Y.Z.lbaction.zip` from the repository's
-[GitHub Releases](https://github.com/andesco/launchbar-apple-passwords/releases)
-page. Unzip it if your browser does not do so automatically, then double-click
-both `Apple Passwords.lbaction` and `Enter verification code.lbaction`, confirming each
-installation in LaunchBar.
-
-### From source
-
-Clone or download the repository, then double-click
-`Apple Passwords.lbaction` and `Enter verification code.lbaction`. The bundles contain the
-JavaScript source that LaunchBar runs, so there is nothing to compile.
-
-To review, test, and package the source yourself:
-
-```sh
-bun run test
-bun run build
-```
-
-The build command validates and tests the action, then creates a versioned
-release ZIP in `dist/`. The ZIP is only a download convenience; LaunchBar
-installs the `.lbaction` bundle inside it.
+- `Apple Passwords.lbaction`
+- `Enter verification code.lbaction`
 
 ## Use
 
-1. Select **Apple Passwords** in LaunchBar.
-2. Press Space, type a domain such as `example.com`, and press Return.
+1. Type `Apple Passwords` in LaunchBar and select it with <kbd>Return</kbd> or
+   <kbd>Space</kbd>.
+2. Type a domain such as `example.com` and press <kbd>Return</kbd>.
 3. If APW finds multiple accounts, choose one. Exact-domain matches are listed
-   first, followed by subdomains and parent-domain matches. A single match opens
-   its fields immediately.
+   first, followed by subdomains and parent-domain matches.
 4. Choose **Username**, **Password**, or **One-time code** to paste it into the
-   previously active application.
+   frontmost application.
+
+If APW needs authentication while you use the action, LaunchBar shows **Enter
+verification code** as an action result. Press <kbd>Return</kbd> to open its
+fresh six-digit code field, enter the code shown by macOS, and press
+<kbd>Return</kbd> again. Password and one-time-code pastes resume automatically.
+If LaunchBar does not restore a domain lookup’s result list, run that domain
+lookup again. Terminal is not required.
 
 The action never enumerates the whole password store. It sends only the domain
 you typed to APW. Passwords and one-time codes are fetched only after you choose
@@ -69,20 +48,20 @@ the corresponding field.
 
 ### Partial matching
 
-APW's helper can look up a complete domain or hostname, but it cannot enumerate
+APW can look up a complete domain or hostname, but it cannot enumerate
 all saved sites or search arbitrary partial text. This action therefore maintains
 a local, non-secret metadata index of the results from successful complete-domain
-lookups. After looking up `redflagdeals.com`, for example, a later search for
-`redflag` can match that domain and any returned subdomains.
+lookups. After looking up `example.com`, a later search for `examp`
+can match that domain and any returned subdomains.
 
 The index contains domains, usernames, titles, and availability flags, but never
-passwords or one-time codes. It is stored in LaunchBar's Action Support folder.
+passwords or one-time codes. It is stored in LaunchBar’s Action Support folder.
 Partial search can only find entries learned through previous complete-domain
 lookups; it is not yet a complete-vault search.
 
-## Clipboard history
+### Clipboard history
 
-The action leverages LaunchBar's paste functionality to paste passwords and
+The action leverages LaunchBar’s paste functionality to paste passwords and
 one-time codes without adding them to clipboard history (including LaunchBar
 itself and macOS Spotlight).
 
@@ -97,19 +76,20 @@ The action looks for APW in:
 
 ## Development and releases
 
-Source files, including `Apple Passwords.lbaction`, are committed to Git.
-Generated ZIP files are ignored and attached to GitHub Releases instead.
+The tracked `.lbaction` bundles contain the JavaScript source that LaunchBar runs
+and are intentionally committed to Git. Generated ZIP files are ignored and
+attached to GitHub Releases instead.
 
-Build a ZIP for the current version:
+**Build a ZIP for the current version:**
 
 ```sh
 bun run build
 ```
 
-Prepare a new version locally:
+**Prepare a new version locally:**
 
 ```sh
-bun run release -- 0.3.0
+bun run release -- 0.0.0
 ```
 
 The release command:
@@ -121,10 +101,10 @@ The release command:
 It does not connect to GitHub. This provides an opportunity to review the commit,
 tag, and ZIP before publication.
 
-Publish the prepared version:
+**Publish the prepared version:**
 
 ```sh
-bun run publish -- 0.3.0
+bun run publish -- 0.0.0
 ```
 
 The publish command requires an authenticated
@@ -132,5 +112,4 @@ The publish command requires an authenticated
 rebuilds and tests the ZIP, pushes the branch and tag to the existing `origin`
 remote, and creates or updates the GitHub Release.
 
-The working tree must be clean before running `release` or `publish`. `build`
-never commits, tags, pushes, or uploads anything.
+The working tree must be clean before running `release` or `publish`.

@@ -36,13 +36,25 @@ VERSION="$version" bun -e '
   const packageJson = JSON.parse(fs.readFileSync(path, "utf8"));
   packageJson.version = process.env.VERSION;
   fs.writeFileSync(path, `${JSON.stringify(packageJson, null, 2)}\n`);
+
+  const readmePath = "README.md";
+  const readme = fs.readFileSync(readmePath, "utf8");
+  const latestDownload =
+    `https://github.com/andesco/launchbar-apple-passwords/releases/download/v${process.env.VERSION}/Apple-Passwords-v${process.env.VERSION}.lbaction.zip`;
+  const releaseDownloadPattern =
+    /https:\/\/github\.com\/andesco\/launchbar-apple-passwords\/releases\/download\/v[^/]+\/Apple-Passwords-v[^/]+\.lbaction\.zip/g;
+  const updatedReadme = readme.replace(releaseDownloadPattern, latestDownload);
+  if (updatedReadme === readme) {
+    throw new Error("README latest release download link was not found");
+  }
+  fs.writeFileSync(readmePath, updatedReadme);
 '
 
 /usr/bin/plutil -replace CFBundleVersion -string "$version" "$plist_path"
 /usr/bin/plutil -replace CFBundleVersion -string "$version" "$verification_plist_path"
 bun run build
 
-git add package.json "$plist_path" "$verification_plist_path"
+git add README.md package.json "$plist_path" "$verification_plist_path"
 if ! git diff --cached --quiet; then
   git commit -m "Release $tag"
 fi
