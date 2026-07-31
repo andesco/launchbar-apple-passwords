@@ -18,16 +18,16 @@ function normalizeQuery(input) {
   var query = String(input || "").trim().toLowerCase();
 
   if (!query) {
-    throw new Error("Enter a domain or domain fragment.");
+    throw new Error("Enter a domain or hostname.");
   }
   if (query.indexOf("://") !== -1 || /[/?#@:]/.test(query) || /\s/.test(query)) {
-    throw new Error("Enter only a domain or domain fragment.");
+    throw new Error("Enter only a domain or hostname.");
   }
   if (query.charAt(query.length - 1) === ".") {
     query = query.slice(0, -1);
   }
   if (query.length > 253 || query.indexOf("..") !== -1) {
-    throw new Error("That does not look like a valid domain fragment.");
+    throw new Error("That does not look like a valid domain or hostname.");
   }
 
   var labels = query.split(".");
@@ -40,7 +40,7 @@ function normalizeQuery(input) {
       label.charAt(label.length - 1) === "-" ||
       !/^[a-z0-9\u0080-\uffff-]+$/i.test(label)
     ) {
-      throw new Error("That does not look like a valid domain fragment.");
+      throw new Error("That does not look like a valid domain or hostname.");
     }
   }
 

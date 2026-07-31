@@ -20,6 +20,9 @@ function actionContext(options = {}) {
   );
   const calls = [];
   const commandURLs = [];
+  const handoffCommands = [];
+  const historyClears = [];
+  const notifications = [];
   const pasted = [];
   const performedActions = [];
   const scriptCalls = [];
@@ -44,6 +47,18 @@ function actionContext(options = {}) {
     },
     LaunchBar: {
       execute(...args) {
+        if (args[0] === "/usr/bin/defaults") {
+          historyClears.push(args);
+          return "";
+        }
+        if (
+          args[0] === "/bin/sh" &&
+          args[1] === "-c" &&
+          String(args[2]).includes("osascript")
+        ) {
+          handoffCommands.push(args);
+          return "";
+        }
         calls.push(args);
         const apwArgs = apwArguments(args);
         if (options.apwResponse) {
@@ -91,8 +106,8 @@ function actionContext(options = {}) {
         }
         throw new Error(`Unexpected APW command: ${command}`);
       },
-      performAction(name) {
-        performedActions.push(name);
+      performAction(...args) {
+        performedActions.push(args);
       },
       executeAppleScript(...lines) {
         scriptCalls.push(lines);
@@ -106,7 +121,9 @@ function actionContext(options = {}) {
       paste(value) {
         pasted.push(value);
       },
-      displayNotification() {},
+      displayNotification(notification) {
+        notifications.push(notification);
+      },
       log() {},
     },
   });
@@ -123,6 +140,9 @@ function actionContext(options = {}) {
     calls,
     commandURLs,
     context,
+    handoffCommands,
+    historyClears,
+    notifications,
     pasted,
     performedActions,
     scriptCalls,
@@ -184,7 +204,7 @@ test("a single account opens its available fields immediately", () => {
   );
 });
 
-test("a later fragment search uses locally indexed domain metadata", () => {
+test("a later partial search uses locally indexed domain metadata", () => {
   const { calls, context } = actionContext();
   context.run("example.com");
   const callCountAfterExactLookup = calls.length;
@@ -193,7 +213,60 @@ test("a later fragment search uses locally indexed domain metadata", () => {
 
   assert.equal(results[0].title, "admin");
   assert.equal(results[0].subtitle, "Username");
-  assert.equal(calls.length, callCountAfterExactLookup);
+  assert.equal(calls.length, callCountAfterExactLookup + 1);
+  assert.deepEqual(apwArguments(calls.at(-1)), [
+    "pw",
+    "list",
+    "admin.example.com",
+  ]);
+});
+
+test("a partial search requests authentication before showing indexed secrets", () => {
+  let unpaired = false;
+  const { calls, context } = actionContext({
+    apwResponse(args) {
+      const command = args.join(" ");
+      if (command === "pw list example.com" && !unpaired) {
+        return {
+          status: 0,
+          results: [
+            {
+              username: "admin",
+              domain: "admin.example.com",
+              sites: ["admin.example.com"],
+            },
+          ],
+        };
+      }
+      if (command === "otp list example.com" && !unpaired) {
+        return {
+          status: 0,
+          results: [
+            { username: "admin", domain: "admin.example.com" },
+          ],
+        };
+      }
+      if (command === "pw list admin.example.com" && unpaired) {
+        return { status: 9, error: "Invalid session" };
+      }
+      if (command === "auth request") return { status: 0 };
+      throw new Error(`Unexpected APW command: ${command}`);
+    },
+  });
+
+  context.run("example.com");
+  unpaired = true;
+  const results = context.run("admin");
+
+  assert.equal(results[0].title, "Enter verification code");
+  assert.equal(
+    context.Action.preferences.pendingAuthentication.resume.query,
+    "admin"
+  );
+  assert.deepEqual(calls.map(apwArguments).slice(-2), [
+    ["pw", "list", "admin.example.com"],
+    ["auth", "request"],
+  ]);
 });
 
 test("invalid URL input never invokes APW", () => {
@@ -204,43 +277,61 @@ test("invalid URL input never invokes APW", () => {
   assert.equal(calls.length, 0);
 });
 
-test("an invalid APW session authenticates and retries the lookup", () => {
+test("the verification action resumes the original lookup with an internal response", () => {
   let lookupAttempts = 0;
-  const { calls, commandURLs, context, scriptCalls } = actionContext({
-    apwResponse(args) {
-      const command = args.join(" ");
-      if (command === "pw list example.com" && lookupAttempts++ === 0) {
-        return { status: 9, error: "Invalid session" };
-      }
-      if (command === "auth request") return { status: 0 };
-      if (command === "auth response --pin 482913") return { status: 0 };
-      if (command === "pw list example.com") {
-        return {
-          status: 0,
-          results: [
-            {
-              username: "root",
-              domain: "example.com",
-              sites: ["example.com"],
-            },
-          ],
-        };
-      }
-      if (command === "otp list example.com") {
-        return { status: 0, results: [] };
-      }
-      throw new Error(`Unexpected APW command: ${command}`);
-    },
-  });
+  const { calls, context, handoffCommands, historyClears, scriptCalls } =
+    actionContext({
+      apwResponse(args) {
+        const command = args.join(" ");
+        if (command === "pw list example.com" && lookupAttempts++ === 0) {
+          return { status: 9, error: "Invalid session" };
+        }
+        if (command === "auth request") return { status: 0 };
+        if (command === "auth response --pin 482913") return { status: 0 };
+        if (command === "pw list example.com") {
+          return {
+            status: 0,
+            results: [
+              {
+                username: "root",
+                domain: "example.com",
+                sites: ["example.com"],
+              },
+            ],
+          };
+        }
+        if (command === "otp list example.com") {
+          return { status: 0, results: [] };
+        }
+        throw new Error(`Unexpected APW command: ${command}`);
+      },
+    });
 
   const initialResult = context.run("example.com");
-  assert.equal(initialResult, undefined);
-  assert.deepEqual(commandURLs, [
-    "select?abbreviation=Apple%20Passwords",
-  ]);
-  assert.equal(scriptCalls.length, 1);
+  assert.equal(
+    initialResult[0].title,
+    "Enter verification code"
+  );
+  assert.equal(
+    initialResult[0].actionBundleIdentifier,
+    "ca.andrewlaunchbar.action.apple-passwords-pin"
+  );
+  assert.equal(handoffCommands.length, 0);
+  assert.equal(historyClears.length, 1);
+  assert.equal(
+    historyClears[0][5],
+    "ca.andrewlaunchbar.action.apple-passwords-pin"
+  );
+  assert.equal(scriptCalls.length, 0);
 
-  const results = context.run("482913");
+  const typingResult = context.suggest("example.com482913");
+  assert.deepEqual(Array.from(typingResult), []);
+  assert.deepEqual(calls.map(apwArguments), [
+    ["pw", "list", "example.com"],
+    ["auth", "request"],
+  ]);
+
+  const results = context.run("__apple_passwords_auth_response__:482913");
   assert.equal(results[0].title, "root");
   assert.deepEqual(calls.map(apwArguments), [
     ["pw", "list", "example.com"],
@@ -251,58 +342,61 @@ test("an invalid APW session authenticates and retries the lookup", () => {
   ]);
 });
 
-test("secret retrieval authenticates and retries before pasting", () => {
+test("the verification action resumes secret retrieval and pastes", () => {
   let passwordAttempts = 0;
-  const { calls, commandURLs, context, pasted } = actionContext({
-    apwResponse(args) {
-      const command = args.join(" ");
-      if (command === "pw list example.com") {
-        return {
-          status: 0,
-          results: [
-            {
-              username: "root",
-              domain: "example.com",
-              sites: ["example.com"],
-            },
-          ],
-        };
-      }
-      if (command === "otp list example.com") {
-        return { status: 0, results: [] };
-      }
-      if (command === "pw get example.com root" && passwordAttempts++ === 0) {
-        return { status: 9, error: "Invalid session" };
-      }
-      if (command === "auth request") return { status: 0 };
-      if (command === "auth response --pin 482913") return { status: 0 };
-      if (command === "pw get example.com root") {
-        return {
-          status: 0,
-          results: [
-            {
-              username: "root",
-              domain: "example.com",
-              password: "secret",
-            },
-          ],
-        };
-      }
-      throw new Error(`Unexpected APW command: ${command}`);
-    },
-  });
+  const { calls, context, handoffCommands, pasted } = actionContext({
+      apwResponse(args) {
+        const command = args.join(" ");
+        if (command === "pw list example.com") {
+          return {
+            status: 0,
+            results: [
+              {
+                username: "root",
+                domain: "example.com",
+                sites: ["example.com"],
+              },
+            ],
+          };
+        }
+        if (command === "otp list example.com") {
+          return { status: 0, results: [] };
+        }
+        if (command === "pw get example.com root" && passwordAttempts++ === 0) {
+          return { status: 9, error: "Invalid session" };
+        }
+        if (command === "auth request") return { status: 0 };
+        if (command === "auth response --pin 482913") return { status: 0 };
+        if (command === "pw get example.com root") {
+          return {
+            status: 0,
+            results: [
+              {
+                username: "root",
+                domain: "example.com",
+                password: "secret",
+              },
+            ],
+          };
+        }
+        throw new Error(`Unexpected APW command: ${command}`);
+      },
+    });
 
   const passwordField = context.run("example.com").find(
     (result) => result.title === "Password"
   );
-  context.pastePassword(passwordField.actionArgument);
+  const prompt = context.pastePassword(passwordField.actionArgument);
 
-  assert.deepEqual(commandURLs, [
-    "select?abbreviation=Apple%20Passwords",
-  ]);
+  assert.equal(prompt[0].title, "Enter verification code");
+  assert.equal(
+    prompt[0].actionBundleIdentifier,
+    "ca.andrewlaunchbar.action.apple-passwords-pin"
+  );
+  assert.equal(handoffCommands.length, 0);
   assert.deepEqual(pasted, []);
 
-  context.run("482913");
+  context.run("__apple_passwords_auth_response__:482913");
 
   assert.deepEqual(pasted, ["secret"]);
   assert.deepEqual(calls.map(apwArguments).slice(-4), [
@@ -313,29 +407,62 @@ test("secret retrieval authenticates and retries before pasting", () => {
   ]);
 });
 
-test("an incomplete PIN keeps the pending authentication available", () => {
-  const { calls, commandURLs, context } = actionContext({
+test("suggestions only read the local index and never mutate authentication", () => {
+  const { calls, context } = actionContext();
+  context.run("example.com");
+  const callsBeforeSuggestion = calls.length;
+  const pending = {
+    createdAt: Date.now(),
+    resume: { type: "lookup", query: "example.com" },
+  };
+  context.Action.preferences.pendingAuthentication = pending;
+
+  const suggestions = context.suggest("admin");
+
+  assert.equal(suggestions[0].title, "admin.example.com");
+  assert.equal(suggestions[0].subtitle, "admin");
+  assert.equal(calls.length, callsBeforeSuggestion);
+  assert.deepEqual(context.Action.preferences.pendingAuthentication, pending);
+});
+
+test("selecting a suggestion submits its domain instead of its account label", () => {
+  const { calls, context } = actionContext({
     apwResponse(args) {
-      if (args.join(" ") === "auth request") return { status: 0 };
-      return { status: 9, error: "Invalid session" };
+      const command = args.join(" ");
+      if (command === "pw list andrewe.dev") {
+        return {
+          status: 0,
+          results: [
+            {
+              username: "Jacket API token",
+              domain: "andrewe.dev",
+              sites: ["andrewe.dev"],
+            },
+          ],
+        };
+      }
+      if (command === "otp list andrewe.dev") {
+        return { status: 0, results: [] };
+      }
+      throw new Error(`Unexpected APW command: ${command}`);
     },
   });
 
-  assert.equal(context.run("example.com"), undefined);
-  const results = context.run("123");
+  context.run("andrewe.dev");
+  const callsBeforeSuggestion = calls.length;
+  const suggestions = context.suggest("andrewe.dev");
 
-  assert.equal(results[0].title, "Invalid APW PIN");
-  assert.deepEqual(commandURLs, [
-    "select?abbreviation=Apple%20Passwords",
-  ]);
-  assert.ok(context.Action.preferences.pendingAuthentication);
-  assert.deepEqual(calls.map(apwArguments), [
-    ["pw", "list", "example.com"],
-    ["auth", "request"],
-  ]);
+  assert.equal(suggestions[0].title, "andrewe.dev");
+  assert.equal(suggestions[0].subtitle, "Jacket API token");
+  assert.equal(suggestions[0].action, undefined);
+  assert.equal(calls.length, callsBeforeSuggestion);
+
+  const results = context.run(suggestions[0].title);
+  assert.equal(results[0].title, "Jacket API token");
+  assert.equal(results[1].title, "Password");
 });
 
-test("a new domain abandons a pending authentication and starts a new lookup", () => {
+test("a new search replaces stale authentication state instead of parsing it as a code", () => {
   const { calls, context } = actionContext({
     apwResponse(args) {
       const command = args.join(" ");
@@ -362,7 +489,10 @@ test("a new domain abandons a pending authentication and starts a new lookup", (
     },
   });
 
-  assert.equal(context.run("example.com"), undefined);
+  assert.equal(
+    context.run("example.com")[0].title,
+    "Enter verification code"
+  );
   const results = context.run("other.test");
 
   assert.equal(results[0].title, "other");
@@ -375,7 +505,35 @@ test("a new domain abandons a pending authentication and starts a new lookup", (
   ]);
 });
 
-test("an unavailable daemon does not prompt for a PIN", () => {
+test("an internal verification response requires a pending request", () => {
+  const { calls, context } = actionContext();
+
+  const results = context.run("__apple_passwords_auth_response__:482913");
+
+  assert.equal(results[0].title, "Authentication request expired");
+  assert.equal(calls.length, 0);
+});
+
+test("ordinary six-digit input is always treated as a search", () => {
+  const { calls, context } = actionContext({
+    apwResponse(args) {
+      if (args.join(" ") === "auth request") return { status: 0 };
+      return { status: 9, error: "Invalid session" };
+    },
+  });
+
+  context.run("example.com");
+  const results = context.run("482913");
+
+  assert.equal(results[0].title, "No indexed matches");
+  assert.equal(context.Action.preferences.pendingAuthentication, null);
+  assert.deepEqual(calls.map(apwArguments), [
+    ["pw", "list", "example.com"],
+    ["auth", "request"],
+  ]);
+});
+
+test("an unavailable daemon does not prompt for a verification code", () => {
   const { calls, context, performedActions } = actionContext({
     apwResponse() {
       return { status: 9, error: "Invalid session" };

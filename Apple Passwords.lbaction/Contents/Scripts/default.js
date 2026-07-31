@@ -7,23 +7,75 @@ var APW_PATHS = [
 ];
 var APW_INVALID_SESSION = 9;
 var AUTHENTICATION_TIMEOUT_MS = 2 * 60 * 1000;
+var AUTHENTICATION_ACTION_BUNDLE =
+  "ca.andrewlaunchbar.action.apple-passwords-pin";
+var AUTHENTICATION_RESPONSE_PREFIX = "__apple_passwords_auth_response__:";
 
 function run(argument) {
-  var pendingAuthentication = readPendingAuthentication();
-  var pendingInput = String(argument || "").trim();
-  if (pendingAuthentication && /^\d{6}$/.test(pendingInput)) {
-    return completeAuthentication(pendingInput, pendingAuthentication);
+  var input = String(argument || "").trim();
+  if (input.indexOf(AUTHENTICATION_RESPONSE_PREFIX) === 0) {
+    return submitAuthenticationResponse(
+      input.slice(AUTHENTICATION_RESPONSE_PREFIX.length)
+    );
   }
-  if (pendingAuthentication && /^\d+$/.test(pendingInput)) {
-    return [
-      messageItem(
-        "Invalid APW PIN",
-        "Enter the complete six-digit PIN shown by macOS."
-      ),
-    ];
-  }
-  if (pendingAuthentication) clearPendingAuthentication();
 
+  clearPendingAuthentication();
+  return runLookup(input);
+}
+
+function suggest(argument) {
+  var query;
+  try {
+    query = normalizeQuery(argument);
+  } catch (error) {
+    return [];
+  }
+
+  return domainSuggestionItems(filterIndex(readIndex(), query), query);
+}
+
+function domainSuggestionItems(records, query) {
+  var suggestionsByDomain = {};
+
+  (records || []).forEach(function (record) {
+    uniqueDomains([record.domain].concat(record.sites || [])).forEach(
+      function (domain) {
+        if (domain.indexOf(query) === -1) return;
+        if (!suggestionsByDomain[domain]) {
+          suggestionsByDomain[domain] = { count: 0, labels: [] };
+        }
+
+        var suggestion = suggestionsByDomain[domain];
+        var label = String(record.title || record.username || "").trim();
+        suggestion.count += 1;
+        if (label && suggestion.labels.indexOf(label) === -1) {
+          suggestion.labels.push(label);
+        }
+      }
+    );
+  });
+
+  return Object.keys(suggestionsByDomain)
+    .sort(function (left, right) {
+      var rankDifference =
+        relationshipRank(left, query) - relationshipRank(right, query);
+      return rankDifference || left.localeCompare(right);
+    })
+    .map(function (domain) {
+      var suggestion = suggestionsByDomain[domain];
+      var subtitle =
+        suggestion.count === 1 && suggestion.labels.length
+          ? suggestion.labels[0]
+          : suggestion.count + " saved accounts";
+      return {
+        title: domain,
+        subtitle: subtitle,
+        icon: "com.apple.Passwords",
+      };
+    });
+}
+
+function runLookup(argument) {
   var query;
   try {
     query = normalizeQuery(argument);
@@ -41,6 +93,13 @@ function run(argument) {
         ),
       ];
     }
+
+    var indexedAuthentication = authenticateBeforeIndexedResults(
+      indexedMatches,
+      query
+    );
+    if (indexedAuthentication) return indexedAuthentication;
+
     return resultsForRecords(indexedMatches);
   }
 
@@ -69,7 +128,7 @@ function run(argument) {
   );
 
   if (passwords.authenticationPending || oneTimeCodes.authenticationPending) {
-    return;
+    return [authenticationActionItem()];
   }
 
   if (!passwords.ok && !oneTimeCodes.ok) {
@@ -140,6 +199,7 @@ function showFields(record) {
       badge: "Fetch and paste",
       action: "pastePassword",
       actionArgument: record,
+      actionReturnsItems: true,
     });
   }
 
@@ -150,6 +210,7 @@ function showFields(record) {
       badge: "Fetch and paste",
       action: "pasteOtp",
       actionArgument: record,
+      actionReturnsItems: true,
     });
   }
 
@@ -170,7 +231,7 @@ function pastePassword(record) {
     {},
     { type: "password", record: record }
   );
-  if (response.authenticationPending) return;
+  if (response.authenticationPending) return [authenticationActionItem()];
   if (!response.ok) return notifyFailure(response.error);
 
   var entry = selectSecretEntry(response.data.results, record);
@@ -190,7 +251,7 @@ function pasteOtp(record) {
     {},
     { type: "otp", record: record }
   );
-  if (response.authenticationPending) return;
+  if (response.authenticationPending) return [authenticationActionItem()];
   if (!response.ok) return notifyFailure(response.error);
 
   var entry = selectSecretEntry(response.data.results, record);
@@ -317,36 +378,70 @@ function beginAuthentication(path, resume) {
     };
   }
 
+  clearVerificationInputHistory();
   Action.preferences.pendingAuthentication = {
     createdAt: Date.now(),
     resume: resume,
   };
 
-  focusAuthenticationInput();
-
   return {
     ok: false,
     status: APW_INVALID_SESSION,
     authenticationPending: true,
-    error: "Enter the six-digit APW PIN in LaunchBar.",
+    error: "Enter the six-digit Apple Passwords verification code in LaunchBar.",
   };
 }
 
-function focusAuthenticationInput() {
-  LaunchBar.openCommandURL(
-    "select?abbreviation=" + encodeURIComponent("Apple Passwords")
-  );
-
+function clearVerificationInputHistory() {
   try {
-    LaunchBar.executeAppleScript(
-      "delay 0.2",
-      'tell application "System Events" to key code 49'
+    LaunchBar.execute(
+      "/usr/bin/defaults",
+      "write",
+      "at.obdev.LaunchBar",
+      "TextInputHistory",
+      "-dict-add",
+      AUTHENTICATION_ACTION_BUNDLE,
+      ""
     );
   } catch (error) {
     LaunchBar.log(
-      "Could not open APW PIN text entry automatically: " + error.message
+      "Could not clear verification-code input history: " + error.message
     );
   }
+}
+
+function authenticateBeforeIndexedResults(records, query) {
+  var apwPath = findApw();
+  if (!apwPath || !records.length) return null;
+
+  var probe = tryApw(apwPath, ["pw", "list", records[0].domain]);
+  if (probe.status !== APW_INVALID_SESSION) return null;
+
+  var authentication = beginAuthentication(apwPath, {
+    type: "lookup",
+    query: query,
+  });
+  if (authentication.authenticationPending) {
+    return [authenticationActionItem()];
+  }
+
+  return [
+    messageItem(
+      "APW is unavailable",
+      authentication.error ||
+        "Make sure the APW service and its browser extension are running."
+    ),
+  ];
+}
+
+function authenticationActionItem() {
+  return {
+    title: "Enter verification code",
+    subtitle: "Press Return to open a fresh six-digit code field.",
+    alwaysShowsSubtitle: true,
+    badge: "Authenticate",
+    actionBundleIdentifier: AUTHENTICATION_ACTION_BUNDLE,
+  };
 }
 
 function readPendingAuthentication() {
@@ -367,35 +462,52 @@ function clearPendingAuthentication() {
   Action.preferences.pendingAuthentication = null;
 }
 
-function completeAuthentication(pin, pending) {
+function submitAuthenticationResponse(code) {
+  var pending = readPendingAuthentication();
+  if (!pending) {
+    return [
+      messageItem(
+        "Authentication request expired",
+        "Run the Apple Passwords search again to request a new verification code."
+      ),
+    ];
+  }
+  if (!/^\d{6}$/.test(String(code || ""))) {
+    return [
+      messageItem(
+        "Invalid verification code",
+        "Enter the complete six-digit code shown by macOS."
+      ),
+    ];
+  }
+
   var apwPath = findApw();
   if (!apwPath) {
     clearPendingAuthentication();
     return [messageItem("APW was not found", "Install APW and try again.")];
   }
 
-  var response = tryApw(apwPath, ["auth", "response", "--pin", pin]);
+  var response = tryApw(apwPath, ["auth", "response", "--pin", code]);
   clearPendingAuthentication();
   if (!response.ok) {
     return [
       messageItem(
         "APW authentication failed",
-        response.error || "Run the lookup again to request a new PIN."
+        response.error ||
+          "Run the lookup again to request a new Apple Passwords verification code."
       ),
     ];
   }
 
   var resume = pending.resume;
   if (resume.type === "lookup") {
-    return run(resume.query);
+    return runLookup(resume.query);
   }
   if (resume.type === "password") {
-    pastePassword(resume.record);
-    return;
+    return pastePassword(resume.record);
   }
   if (resume.type === "otp") {
-    pasteOtp(resume.record);
-    return;
+    return pasteOtp(resume.record);
   }
 
   return [

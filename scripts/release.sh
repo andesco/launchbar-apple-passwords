@@ -15,6 +15,7 @@ fi
 
 repo_root=${0:A:h:h}
 plist_path="$repo_root/Apple Passwords.lbaction/Contents/Info.plist"
+verification_plist_path="$repo_root/Enter verification code.lbaction/Contents/Info.plist"
 tag="v$version"
 
 cd "$repo_root"
@@ -38,9 +39,10 @@ VERSION="$version" bun -e '
 '
 
 /usr/bin/plutil -replace CFBundleVersion -string "$version" "$plist_path"
+/usr/bin/plutil -replace CFBundleVersion -string "$version" "$verification_plist_path"
 bun run build
 
-git add package.json "$plist_path"
+git add package.json "$plist_path" "$verification_plist_path"
 if ! git diff --cached --quiet; then
   git commit -m "Release $tag"
 fi

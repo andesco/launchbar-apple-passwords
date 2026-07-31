@@ -20,7 +20,7 @@ test("normalizes a typed domain", () => {
   assert.equal(normalizeTypedDomain("xn--bcher-kva.example"), "xn--bcher-kva.example");
 });
 
-test("accepts a bare domain fragment as a query", () => {
+test("accepts partial domain text as a query", () => {
   assert.equal(normalizeQuery(" RedFlag "), "redflag");
   assert.equal(isCompleteDomain("redflag"), false);
   assert.equal(isCompleteDomain("redflagdeals.com"), true);

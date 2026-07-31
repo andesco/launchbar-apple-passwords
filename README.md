@@ -19,10 +19,12 @@ brew services start apw
 ```
 
 APW must be authenticated again whenever its daemon restarts. When that is
-needed, the action automatically requests authentication and redirects its
-LaunchBar text field to accept the six-digit PIN shown by macOS. It submits the
-PIN and resumes the original lookup or paste operation. Terminal is not
-required for authentication.
+needed, the action automatically requests an Apple Passwords verification code.
+LaunchBar then shows **Enter verification code** as an action
+result. Press Return to open its fresh six-digit code field, enter the code shown
+by macOS, and press Return again. Password and one-time-code pastes resume
+automatically. If LaunchBar does not restore a domain lookup’s result list, run
+that domain lookup again. Terminal is not required.
 
 ## Install the action
 
@@ -31,13 +33,14 @@ required for authentication.
 Download `Apple-Passwords-vX.Y.Z.lbaction.zip` from the repository's
 [GitHub Releases](https://github.com/andesco/launchbar-apple-passwords/releases)
 page. Unzip it if your browser does not do so automatically, then double-click
-`Apple Passwords.lbaction` and confirm installation in LaunchBar.
+both `Apple Passwords.lbaction` and `Enter verification code.lbaction`, confirming each
+installation in LaunchBar.
 
 ### From source
 
 Clone or download the repository, then double-click
-`Apple Passwords.lbaction`. The bundle contains the JavaScript source that
-LaunchBar runs, so there is nothing to compile.
+`Apple Passwords.lbaction` and `Enter verification code.lbaction`. The bundles contain the
+JavaScript source that LaunchBar runs, so there is nothing to compile.
 
 To review, test, and package the source yourself:
 
@@ -67,7 +70,7 @@ the corresponding field.
 ### Partial matching
 
 APW's helper can look up a complete domain or hostname, but it cannot enumerate
-all saved sites or search arbitrary fragments. This action therefore maintains
+all saved sites or search arbitrary partial text. This action therefore maintains
 a local, non-secret metadata index of the results from successful complete-domain
 lookups. After looking up `redflagdeals.com`, for example, a later search for
 `redflag` can match that domain and any returned subdomains.
@@ -111,7 +114,7 @@ bun run release -- 0.3.0
 
 The release command:
 
-1. Updates the version in both `package.json` and the LaunchBar bundle.
+1. Updates the version in `package.json` and both LaunchBar bundles.
 2. Validates, tests, and packages the action.
 3. Commits the version change and creates the corresponding Git tag.
 

@@ -5,9 +5,9 @@
 	<key>CFBundleIconFile</key>
 	<string>com.apple.Passwords</string>
 	<key>CFBundleIdentifier</key>
-	<string>ca.andrewlaunchbar.action.apple-passwords</string>
+	<string>ca.andrewlaunchbar.action.apple-passwords-pin</string>
 	<key>CFBundleName</key>
-	<string>Apple Passwords</string>
+	<string>Enter verification code</string>
 	<key>CFBundleVersion</key>
 	<string>0.4.1</string>
 	<key>LBDescription</key>
@@ -15,7 +15,7 @@
 		<key>LBAuthor</key>
 		<string>Andrew</string>
 		<key>LBSummary</key>
-		<string>Find Apple Passwords accounts by domain or hostname using APW</string>
+		<string>Submit the six-digit Apple Passwords verification code</string>
 		<key>LBWebsiteURL</key>
 		<string>https://github.com/andesco/launchbar-apple-passwords</string>
 	</dict>
@@ -27,6 +27,8 @@
 			<array>
 				<string>string</string>
 			</array>
+			<key>LBAllowsInstantReuseOfLastTextInputString</key>
+			<false/>
 			<key>LBRequiresArgument</key>
 			<true/>
 			<key>LBResultType</key>
@@ -36,15 +38,8 @@
 			<key>LBScriptName</key>
 			<string>default.js</string>
 		</dict>
-		<key>LBSuggestionsScript</key>
-		<dict>
-			<key>LBRunInBackground</key>
-			<true/>
-			<key>LBScriptName</key>
-			<string>suggestions.js</string>
-		</dict>
 	</dict>
 	<key>LBTextInputTitle</key>
-	<string>Domain or hostname</string>
+	<string>Six-digit verification code shown by macOS</string>
 </dict>
 </plist>
