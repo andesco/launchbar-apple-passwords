@@ -3,6 +3,10 @@
 This LaunchBar action finds Apple Passwords entries for a domain with
 [`apw`](https://github.com/bendews/apw).
 
+<div align="center">
+  <img src="images/screenshot-2.webp" width="695" alt="Apple Passwords fields in LaunchBar">
+</div>
+
 ## Requirements
 
 - macOS 14 or later
