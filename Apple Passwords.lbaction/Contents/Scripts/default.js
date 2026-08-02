@@ -169,7 +169,7 @@ function resultsForRecords(records) {
   return records.map(function (record) {
     var capabilities = [];
     if (record.hasPassword) capabilities.push("Password");
-    if (record.hasOtp) capabilities.push("OTP");
+    if (record.hasOtp) capabilities.push("Verification code");
 
     return {
       title: record.title || record.username || "(No username)",
@@ -183,21 +183,20 @@ function resultsForRecords(records) {
 
 function showFields(record) {
   var fields = [
-    {
-      title: record.username || "(Empty username)",
-      subtitle: "Username",
-      badge: "Paste",
-      action: "pasteUsername",
-      actionArgument: record,
-    },
+    pasteCopyFieldItem(
+      record.username || "(Empty username)",
+      "Username",
+      record.username,
+      "pasteUsername"
+    ),
   ];
 
   if (record.hasPassword) {
     fields.push({
-      title: "Password",
+      title: "Paste password",
       subtitle: record.domain,
-      badge: "Fetch and paste",
-      action: "pastePassword",
+      badge: "Paste ↩",
+      action: "fetchAndPastePassword",
       actionArgument: record,
       actionReturnsItems: true,
     });
@@ -205,23 +204,49 @@ function showFields(record) {
 
   if (record.hasOtp) {
     fields.push({
-      title: "One-time code",
+      title: "Paste verification code",
       subtitle: record.domain,
-      badge: "Fetch and paste",
-      action: "pasteOtp",
+      badge: "Paste ↩",
+      action: "fetchAndPasteOtp",
       actionArgument: record,
       actionReturnsItems: true,
     });
   }
 
+  if (record.hasPassword) {
+    fields.push({
+      title: "Copy password",
+      subtitle: record.domain,
+      badge: "Copy ↩",
+      action: "copyPassword",
+      actionArgument: record,
+      actionReturnsItems: true,
+    });
+  }
+
+  if (record.hasOtp) {
+    fields.push({
+      title: "Copy verification code",
+      subtitle: record.domain,
+      badge: "Copy ↩",
+      action: "copyOtp",
+      actionArgument: record,
+      actionReturnsItems: true,
+    });
+  }
+
+  uniqueDomains(record.sites).forEach(function (domain) {
+    fields.push({
+      title: domain,
+      subtitle: "Associated domain",
+      url: "https://" + domain,
+    });
+  });
+
   return fields;
 }
 
-function pasteUsername(record) {
-  pasteValue(record.username, "Username");
-}
-
-function pastePassword(record) {
+function fetchAndPastePassword(record) {
   var apwPath = findApw();
   if (!apwPath) return notifyFailure("APW was not found.");
 
@@ -229,7 +254,7 @@ function pastePassword(record) {
     apwPath,
     ["pw", "get", record.domain, record.username],
     {},
-    { type: "password", record: record }
+    { type: "pastePassword", record: record }
   );
   if (response.authenticationPending) return [authenticationActionItem()];
   if (!response.ok) return notifyFailure(response.error);
@@ -241,7 +266,7 @@ function pastePassword(record) {
   pasteValue(entry.password, "Password");
 }
 
-function pasteOtp(record) {
+function fetchAndPasteOtp(record) {
   var apwPath = findApw();
   if (!apwPath) return notifyFailure("APW was not found.");
 
@@ -249,16 +274,72 @@ function pasteOtp(record) {
     apwPath,
     ["otp", "get", record.domain],
     {},
-    { type: "otp", record: record }
+    { type: "pasteOtp", record: record }
   );
   if (response.authenticationPending) return [authenticationActionItem()];
   if (!response.ok) return notifyFailure(response.error);
 
   var entry = selectSecretEntry(response.data.results, record);
   if (!entry || !entry.code) {
-    return notifyFailure("APW did not return the selected one-time code.");
+    return notifyFailure("APW did not return the selected verification code.");
   }
-  pasteValue(entry.code, "One-time code");
+  pasteValue(entry.code, "Verification code");
+}
+
+function copyPassword(record) {
+  var apwPath = findApw();
+  if (!apwPath) return notifyFailure("APW was not found.");
+
+  var response = tryApwWithAuthentication(
+    apwPath,
+    ["pw", "get", record.domain, record.username],
+    {},
+    { type: "copyPassword", record: record }
+  );
+  if (response.authenticationPending) return [authenticationActionItem()];
+  if (!response.ok) return notifyFailure(response.error);
+
+  var entry = selectSecretEntry(response.data.results, record);
+  if (!entry || !entry.password) {
+    return notifyFailure("APW did not return the selected password.");
+  }
+  LaunchBar.setClipboardString(String(entry.password));
+}
+
+function copyOtp(record) {
+  var apwPath = findApw();
+  if (!apwPath) return notifyFailure("APW was not found.");
+
+  var response = tryApwWithAuthentication(
+    apwPath,
+    ["otp", "get", record.domain],
+    {},
+    { type: "copyOtp", record: record }
+  );
+  if (response.authenticationPending) return [authenticationActionItem()];
+  if (!response.ok) return notifyFailure(response.error);
+
+  var entry = selectSecretEntry(response.data.results, record);
+  if (!entry || !entry.code) {
+    return notifyFailure("APW did not return the selected verification code.");
+  }
+  LaunchBar.setClipboardString(String(entry.code));
+}
+
+function pasteCopyFieldItem(title, subtitle, value, action) {
+  var item = {
+    title: title,
+    subtitle: subtitle,
+    badge: "Paste ↩ · Copy ⌘C",
+    action: action,
+    actionArgument: value,
+  };
+  if (value) item.url = String(value);
+  return item;
+}
+
+function pasteUsername(value) {
+  pasteValue(value, "Username");
 }
 
 function pasteValue(value, label) {
@@ -503,11 +584,17 @@ function submitAuthenticationResponse(code) {
   if (resume.type === "lookup") {
     return runLookup(resume.query);
   }
-  if (resume.type === "password") {
-    return pastePassword(resume.record);
+  if (resume.type === "copyPassword") {
+    return copyPassword(resume.record);
   }
-  if (resume.type === "otp") {
-    return pasteOtp(resume.record);
+  if (resume.type === "copyOtp") {
+    return copyOtp(resume.record);
+  }
+  if (resume.type === "pastePassword") {
+    return fetchAndPastePassword(resume.record);
+  }
+  if (resume.type === "pasteOtp") {
+    return fetchAndPasteOtp(resume.record);
   }
 
   return [
