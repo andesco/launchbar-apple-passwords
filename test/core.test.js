@@ -13,6 +13,7 @@ const {
   normalizeTypedDomain,
   relationshipRank,
   selectSecretEntry,
+  totpSecondsRemaining,
 } = require("../Apple Passwords.lbaction/Contents/Scripts/core.js");
 
 test("normalizes a typed domain", () => {
@@ -121,6 +122,14 @@ test("selects the fetched secret matching username and domain", () => {
     }
   );
   assert.equal(selected.password, "right");
+});
+
+test("computes epoch-aligned TOTP seconds remaining", () => {
+  assert.equal(totpSecondsRemaining(30, 0), 30);
+  assert.equal(totpSecondsRemaining(30, 1000), 29);
+  assert.equal(totpSecondsRemaining(30, 29000), 1);
+  assert.equal(totpSecondsRemaining(30, 30000), 30);
+  assert.equal(totpSecondsRemaining(60, 45000), 15);
 });
 
 test("indexes metadata and finds partial domain matches", () => {

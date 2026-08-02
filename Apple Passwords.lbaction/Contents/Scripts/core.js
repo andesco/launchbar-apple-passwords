@@ -240,6 +240,13 @@ function mergeIndex(existing, additions) {
   });
 }
 
+function totpSecondsRemaining(period, now) {
+  period = period || 30;
+  now = typeof now === "number" ? now : Date.now();
+  var secondsSinceEpoch = Math.floor(now / 1000);
+  return period - (secondsSinceEpoch % period);
+}
+
 function filterIndex(records, query) {
   return (records || [])
     .filter(function (record) {
@@ -273,6 +280,7 @@ if (typeof module !== "undefined" && module.exports) {
     normalizeTypedDomain: normalizeTypedDomain,
     relationshipRank: relationshipRank,
     selectSecretEntry: selectSecretEntry,
+    totpSecondsRemaining: totpSecondsRemaining,
     uniqueDomains: uniqueDomains,
   };
 }

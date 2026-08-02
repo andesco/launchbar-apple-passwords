@@ -4,7 +4,7 @@ This LaunchBar action finds Apple Passwords entries for a domain with
 [`apw`](https://github.com/bendews/apw).
 
 <div align="center">
-  <img src="images/screenshot-2.webp" width="695" alt="Apple Passwords fields in LaunchBar">
+  <img src="images/screenshot-0.webp" width="695" alt="Apple Passwords fields in LaunchBar">
 </div>
 
 ## Requirements
@@ -37,17 +37,23 @@ Open both actions in LaunchBar. Confirm each action:
 2. Type a domain such as `example.com`. Press <kbd>Return</kbd>.
 3. If APW finds multiple accounts, select an account. Exact-domain matches
    appear first. Subdomain and parent-domain matches appear next.
-4. Select **Username**, **Password**, or **One-time code**. The action pastes the
-   value into the frontmost application.
+4. Select an action. Press <kbd>Return</kbd>.
 
-If APW needs authentication, LaunchBar shows **Enter verification code**. Press
-<kbd>Return</kbd>. Type the six-digit code that macOS shows. Press
-<kbd>Return</kbd> again. The action continues the password or one-time-code
-paste. If LaunchBar does not restore the domain result list, run the domain
+<div align="center">
+  <img src="images/screenshot-2.webp" width="695" alt="Apple Passwords fields in LaunchBar">
+</div>
+
+If APW needs authentication, LaunchBar shows **Enter verification code** (a
+separate six-digit macOS system code, not the account's own verification
+code). Press <kbd>Return</kbd>. Type the six-digit code that macOS shows.
+Press <kbd>Return</kbd> again. The action continues the field you were
+opening. If LaunchBar does not restore the domain result list, run the domain
 lookup again.
 
-The action does not list the full password store. It sends only the typed domain
-to APW. It gets a password or one-time code only after you select its field.
+The action does not list the full password store. It sends only the typed
+domain to APW. It fetches the password or verification code only after you
+choose Paste or Copy for that specific field, and only that one value —
+never both together.
 
 ### Partial matching
 
@@ -59,14 +65,17 @@ After you look up `example.com`, a later search for `examp` can find that domain
 and its returned subdomains.
 
 The index stores domains, usernames, titles, and availability flags. It never
-stores passwords or one-time codes. LaunchBar stores the index in its Action
-Support folder. Partial search finds only entries from previous complete-domain
-lookups. It does not search the full password store.
+stores passwords or verification codes. LaunchBar stores the index in its
+Action Support folder. Partial search finds only entries from previous
+complete-domain lookups. It does not search the full password store.
 
 ### Clipboard history
 
-The action uses LaunchBar’s paste function. LaunchBar and macOS Spotlight do not
-add passwords or one-time codes from this action to clipboard history.
+Pressing <kbd>Return</kbd> uses LaunchBar's paste function. LaunchBar and macOS
+Spotlight do not add values pasted this way to clipboard history. Pressing
+<kbd>⌘C</kbd> puts the value on the system clipboard, the same as copying text
+in any other app. Clear the clipboard afterward if you do not want the value
+to remain there.
 
 ## APW executable locations
 

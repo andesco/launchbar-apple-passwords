@@ -19,9 +19,12 @@ function actionContext(options = {}) {
     "Scripts"
   );
   const calls = [];
+  const clipboardStrings = [];
   const commandURLs = [];
   const handoffCommands = [];
+  const hides = [];
   const historyClears = [];
+  const largeTypeDisplays = [];
   const notifications = [];
   const pasted = [];
   const performedActions = [];
@@ -92,6 +95,18 @@ function actionContext(options = {}) {
             results: [{ username: "admin", domain: "admin.example.com" }],
           });
         }
+        if (command === "pw list admin.example.com") {
+          return JSON.stringify({
+            status: 0,
+            results: [
+              {
+                username: "admin",
+                domain: "admin.example.com",
+                sites: ["admin.example.com"],
+              },
+            ],
+          });
+        }
         if (command === "pw get admin.example.com admin") {
           return JSON.stringify({
             status: 0,
@@ -100,6 +115,31 @@ function actionContext(options = {}) {
                 username: "admin",
                 domain: "admin.example.com",
                 password: "secret",
+              },
+            ],
+          });
+        }
+        if (command === "otp get admin.example.com") {
+          return JSON.stringify({
+            status: 0,
+            results: [
+              {
+                username: "admin",
+                domain: "admin.example.com",
+                source: "totp",
+                code: "654321",
+              },
+            ],
+          });
+        }
+        if (command === "pw get example.com root") {
+          return JSON.stringify({
+            status: 0,
+            results: [
+              {
+                username: "root",
+                domain: "example.com",
+                password: "rootsecret",
               },
             ],
           });
@@ -116,10 +156,16 @@ function actionContext(options = {}) {
         commandURLs.push(url);
       },
       hide() {
-        throw new Error("LaunchBar.hide() must not be called before paste");
+        hides.push(true);
       },
       paste(value) {
         pasted.push(value);
+      },
+      setClipboardString(value) {
+        clipboardStrings.push(value);
+      },
+      displayInLargeType(displayData) {
+        largeTypeDisplays.push(displayData);
       },
       displayNotification(notification) {
         notifications.push(notification);
@@ -138,10 +184,13 @@ function actionContext(options = {}) {
   );
   return {
     calls,
+    clipboardStrings,
     commandURLs,
     context,
     handoffCommands,
+    hides,
     historyClears,
+    largeTypeDisplays,
     notifications,
     pasted,
     performedActions,
@@ -161,7 +210,7 @@ test("the action lists exact and subdomain matches without fetching secrets", ()
     ]),
     [
       ["root", "example.com", "Password"],
-      ["admin", "admin.example.com", "Password + OTP"],
+      ["admin", "admin.example.com", "Password + Verification code"],
     ]
   );
   assert.deepEqual(
@@ -173,23 +222,94 @@ test("the action lists exact and subdomain matches without fetching secrets", ()
   );
 });
 
-test("a password is fetched only after its field is chosen", () => {
+test("selecting an account shows its fields instantly, without calling APW", () => {
+  const { calls, context } = actionContext();
+  const accountItem = context.run("example.com")[1];
+  const callsBeforeSelection = calls.length;
+
+  const fields = context.showFields(accountItem.actionArgument);
+
+  assert.equal(calls.length, callsBeforeSelection);
+  assert.deepEqual(
+    Array.from(fields, (field) => [field.title, field.action, field.actionReturnsItems]),
+    [
+      ["admin", "pasteUsername", undefined],
+      ["Paste password", "fetchAndPastePassword", true],
+      ["Paste verification code", "fetchAndPasteOtp", true],
+      ["Copy password", "copyPassword", true],
+      ["Copy verification code", "copyOtp", true],
+      ["admin.example.com", undefined, undefined],
+    ]
+  );
+});
+
+test("pasting the password fetches and pastes it in one step, without revealing it", () => {
   const { calls, context, pasted } = actionContext();
-  const account = context.run("example.com")[1].actionArgument;
+  const accountItem = context.run("example.com")[1];
+  const fields = context.showFields(accountItem.actionArgument);
 
-  context.pastePassword(account);
+  const result = context.fetchAndPastePassword(fields[1].actionArgument);
 
-  assert.deepEqual(apwArguments(calls.at(-1)), [
+  assert.deepEqual(calls.slice(-1).map(apwArguments)[0], [
     "pw",
     "get",
     "admin.example.com",
     "admin",
   ]);
   assert.deepEqual(pasted, ["secret"]);
+  assert.equal(result, undefined);
 });
 
-test("a single account opens its available fields immediately", () => {
-  const { context } = actionContext();
+test("pasting the verification code fetches and pastes it in one step, without revealing it", () => {
+  const { calls, context, pasted } = actionContext();
+  const accountItem = context.run("example.com")[1];
+  const fields = context.showFields(accountItem.actionArgument);
+
+  const result = context.fetchAndPasteOtp(fields[2].actionArgument);
+
+  assert.deepEqual(calls.slice(-1).map(apwArguments)[0], [
+    "otp",
+    "get",
+    "admin.example.com",
+  ]);
+  assert.deepEqual(pasted, ["654321"]);
+  assert.equal(result, undefined);
+});
+
+test("copying the password fetches only that secret, once, and puts it on the clipboard silently", () => {
+  const { calls, clipboardStrings, context, largeTypeDisplays } = actionContext();
+  const accountItem = context.run("example.com")[1];
+  const fields = context.showFields(accountItem.actionArgument);
+  const callsBeforeCopy = calls.length;
+
+  const result = context.copyPassword(fields[3].actionArgument);
+
+  assert.deepEqual(calls.slice(callsBeforeCopy).map(apwArguments), [
+    ["pw", "get", "admin.example.com", "admin"],
+  ]);
+  assert.equal(result, undefined);
+  assert.deepEqual(clipboardStrings, ["secret"]);
+  assert.equal(largeTypeDisplays.length, 0);
+});
+
+test("copying the verification code fetches only that secret, once, and puts it on the clipboard silently", () => {
+  const { calls, clipboardStrings, context, largeTypeDisplays } = actionContext();
+  const accountItem = context.run("example.com")[1];
+  const fields = context.showFields(accountItem.actionArgument);
+  const callsBeforeCopy = calls.length;
+
+  const result = context.copyOtp(fields[4].actionArgument);
+
+  assert.deepEqual(calls.slice(callsBeforeCopy).map(apwArguments), [
+    ["otp", "get", "admin.example.com"],
+  ]);
+  assert.equal(result, undefined);
+  assert.deepEqual(clipboardStrings, ["654321"]);
+  assert.equal(largeTypeDisplays.length, 0);
+});
+
+test("a single account opens its available fields immediately, without calling APW", () => {
+  const { calls, context } = actionContext();
   const originalMergeEntries = context.mergeEntries;
   context.mergeEntries = (...args) => [originalMergeEntries(...args)[0]];
 
@@ -199,9 +319,55 @@ test("a single account opens its available fields immediately", () => {
     Array.from(results, (result) => [result.title, result.subtitle]),
     [
       ["root", "Username"],
-      ["Password", "example.com"],
+      ["Paste password", "example.com"],
+      ["Copy password", "example.com"],
+      ["example.com", "Associated domain"],
     ]
   );
+  assert.deepEqual(calls.map(apwArguments), [
+    ["pw", "list", "example.com"],
+    ["otp", "list", "example.com"],
+  ]);
+});
+
+test("all associated domains appear as their own field, including the primary domain, without calling APW", () => {
+  const { calls, context } = actionContext({
+    apwResponse(args) {
+      const command = args.join(" ");
+      if (command === "pw list example.com") {
+        return {
+          status: 0,
+          results: [
+            {
+              username: "root",
+              domain: "example.com",
+              sites: ["example.com", "www.example.com", "login.example.com"],
+            },
+          ],
+        };
+      }
+      if (command === "otp list example.com") return { status: 0, results: [] };
+      throw new Error(`Unexpected APW command: ${command}`);
+    },
+  });
+
+  const results = context.run("example.com");
+  const domainItems = results.filter(
+    (result) => result.subtitle === "Associated domain"
+  );
+
+  assert.deepEqual(
+    Array.from(domainItems, (item) => [item.title, item.url]),
+    [
+      ["example.com", "https://example.com"],
+      ["www.example.com", "https://www.example.com"],
+      ["login.example.com", "https://login.example.com"],
+    ]
+  );
+  assert.deepEqual(calls.map(apwArguments), [
+    ["pw", "list", "example.com"],
+    ["otp", "list", "example.com"],
+  ]);
 });
 
 test("a later partial search uses locally indexed domain metadata", () => {
@@ -342,9 +508,9 @@ test("the verification action resumes the original lookup with an internal respo
   ]);
 });
 
-test("the verification action resumes secret retrieval and pastes", () => {
+test("the verification action resumes copying the secret silently", () => {
   let passwordAttempts = 0;
-  const { calls, context, handoffCommands, pasted } = actionContext({
+  const { calls, clipboardStrings, context, handoffCommands, largeTypeDisplays, pasted } = actionContext({
       apwResponse(args) {
         const command = args.join(" ");
         if (command === "pw list example.com") {
@@ -383,10 +549,9 @@ test("the verification action resumes secret retrieval and pastes", () => {
       },
     });
 
-  const passwordField = context.run("example.com").find(
-    (result) => result.title === "Password"
-  );
-  const prompt = context.pastePassword(passwordField.actionArgument);
+  const fields = context.run("example.com");
+  const passwordField = fields.find((result) => result.title === "Copy password");
+  const prompt = context.copyPassword(passwordField.actionArgument);
 
   assert.equal(prompt[0].title, "Enter verification code");
   assert.equal(
@@ -396,15 +561,64 @@ test("the verification action resumes secret retrieval and pastes", () => {
   assert.equal(handoffCommands.length, 0);
   assert.deepEqual(pasted, []);
 
-  context.run("__apple_passwords_auth_response__:482913");
+  const result = context.run("__apple_passwords_auth_response__:482913");
 
-  assert.deepEqual(pasted, ["secret"]);
+  assert.equal(result, undefined);
+  assert.deepEqual(clipboardStrings, ["secret"]);
+  assert.equal(largeTypeDisplays.length, 0);
+  assert.deepEqual(pasted, []);
   assert.deepEqual(calls.map(apwArguments).slice(-4), [
     ["pw", "get", "example.com", "root"],
     ["auth", "request"],
     ["auth", "response", "--pin", "482913"],
     ["pw", "get", "example.com", "root"],
   ]);
+});
+
+test("the verification action resumes a one-shot paste without ever revealing the value", () => {
+  let passwordAttempts = 0;
+  const { context, pasted } = actionContext({
+    apwResponse(args) {
+      const command = args.join(" ");
+      if (command === "pw list example.com") {
+        return {
+          status: 0,
+          results: [
+            { username: "root", domain: "example.com", sites: ["example.com"] },
+          ],
+        };
+      }
+      if (command === "otp list example.com") {
+        return { status: 0, results: [] };
+      }
+      if (command === "pw get example.com root" && passwordAttempts++ === 0) {
+        return { status: 9, error: "Invalid session" };
+      }
+      if (command === "auth request") return { status: 0 };
+      if (command === "auth response --pin 482913") return { status: 0 };
+      if (command === "pw get example.com root") {
+        return {
+          status: 0,
+          results: [
+            { username: "root", domain: "example.com", password: "secret" },
+          ],
+        };
+      }
+      throw new Error(`Unexpected APW command: ${command}`);
+    },
+  });
+
+  const fields = context.run("example.com");
+  const pasteField = fields.find((result) => result.title === "Paste password");
+  const prompt = context.fetchAndPastePassword(pasteField.actionArgument);
+
+  assert.equal(prompt[0].title, "Enter verification code");
+  assert.deepEqual(pasted, []);
+
+  const result = context.run("__apple_passwords_auth_response__:482913");
+
+  assert.deepEqual(pasted, ["secret"]);
+  assert.equal(result, undefined);
 });
 
 test("suggestions only read the local index and never mutate authentication", () => {
@@ -459,7 +673,7 @@ test("selecting a suggestion submits its domain instead of its account label", (
 
   const results = context.run(suggestions[0].title);
   assert.equal(results[0].title, "Jacket API token");
-  assert.equal(results[1].title, "Password");
+  assert.equal(results[1].title, "Paste password");
 });
 
 test("a new search replaces stale authentication state instead of parsing it as a code", () => {
