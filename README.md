@@ -24,7 +24,7 @@ brew services start apw
 
 ## Install the action
 
-[Download the latest release](https://github.com/andesco/launchbar-apple-passwords/releases/download/v0.5.1/Apple-Passwords-v0.5.1.lbaction.zip).
+[Download the latest release](https://github.com/andesco/launchbar-apple-passwords/releases/download/v0.5.2/Apple-Passwords-v0.5.2.lbaction.zip).
 Open both actions in LaunchBar. Confirm each action:
 
 - `Apple Passwords.lbaction`
