@@ -234,10 +234,10 @@ test("selecting an account shows its fields instantly, without calling APW", () 
     Array.from(fields, (field) => [field.title, field.action, field.actionReturnsItems]),
     [
       ["admin", "pasteUsername", undefined],
-      ["Paste password", "fetchAndPastePassword", true],
-      ["Paste verification code", "fetchAndPasteOtp", true],
       ["Copy password", "copyPassword", true],
       ["Copy verification code", "copyOtp", true],
+      ["Paste password", "fetchAndPastePassword", true],
+      ["Paste verification code", "fetchAndPasteOtp", true],
       ["admin.example.com", undefined, undefined],
     ]
   );
@@ -248,7 +248,8 @@ test("pasting the password fetches and pastes it in one step, without revealing 
   const accountItem = context.run("example.com")[1];
   const fields = context.showFields(accountItem.actionArgument);
 
-  const result = context.fetchAndPastePassword(fields[1].actionArgument);
+  const pasteField = fields.find((field) => field.title === "Paste password");
+  const result = context.fetchAndPastePassword(pasteField.actionArgument);
 
   assert.deepEqual(calls.slice(-1).map(apwArguments)[0], [
     "pw",
@@ -265,7 +266,10 @@ test("pasting the verification code fetches and pastes it in one step, without r
   const accountItem = context.run("example.com")[1];
   const fields = context.showFields(accountItem.actionArgument);
 
-  const result = context.fetchAndPasteOtp(fields[2].actionArgument);
+  const otpField = fields.find(
+    (field) => field.title === "Paste verification code"
+  );
+  const result = context.fetchAndPasteOtp(otpField.actionArgument);
 
   assert.deepEqual(calls.slice(-1).map(apwArguments)[0], [
     "otp",
@@ -277,34 +281,56 @@ test("pasting the verification code fetches and pastes it in one step, without r
 });
 
 test("copying the password fetches only that secret, once, and puts it on the clipboard silently", () => {
-  const { calls, clipboardStrings, context, largeTypeDisplays } = actionContext();
+  const {
+    calls,
+    clipboardStrings,
+    context,
+    hides,
+    largeTypeDisplays,
+    performedActions,
+  } = actionContext();
   const accountItem = context.run("example.com")[1];
   const fields = context.showFields(accountItem.actionArgument);
   const callsBeforeCopy = calls.length;
 
-  const result = context.copyPassword(fields[3].actionArgument);
+  const copyField = fields.find((field) => field.title === "Copy password");
+  const result = context.copyPassword(copyField.actionArgument);
 
   assert.deepEqual(calls.slice(callsBeforeCopy).map(apwArguments), [
     ["pw", "get", "admin.example.com", "admin"],
   ]);
   assert.equal(result, undefined);
   assert.deepEqual(clipboardStrings, ["secret"]);
+  assert.deepEqual(performedActions, []);
+  assert.deepEqual(hides, [true]);
   assert.equal(largeTypeDisplays.length, 0);
 });
 
 test("copying the verification code fetches only that secret, once, and puts it on the clipboard silently", () => {
-  const { calls, clipboardStrings, context, largeTypeDisplays } = actionContext();
+  const {
+    calls,
+    clipboardStrings,
+    context,
+    hides,
+    largeTypeDisplays,
+    performedActions,
+  } = actionContext();
   const accountItem = context.run("example.com")[1];
   const fields = context.showFields(accountItem.actionArgument);
   const callsBeforeCopy = calls.length;
 
-  const result = context.copyOtp(fields[4].actionArgument);
+  const copyField = fields.find(
+    (field) => field.title === "Copy verification code"
+  );
+  const result = context.copyOtp(copyField.actionArgument);
 
   assert.deepEqual(calls.slice(callsBeforeCopy).map(apwArguments), [
     ["otp", "get", "admin.example.com"],
   ]);
   assert.equal(result, undefined);
   assert.deepEqual(clipboardStrings, ["654321"]);
+  assert.deepEqual(performedActions, []);
+  assert.deepEqual(hides, [true]);
   assert.equal(largeTypeDisplays.length, 0);
 });
 
@@ -319,8 +345,8 @@ test("a single account opens its available fields immediately, without calling A
     Array.from(results, (result) => [result.title, result.subtitle]),
     [
       ["root", "Username"],
-      ["Paste password", "example.com"],
       ["Copy password", "example.com"],
+      ["Paste password", "example.com"],
       ["example.com", "Associated domain"],
     ]
   );
@@ -510,7 +536,7 @@ test("the verification action resumes the original lookup with an internal respo
 
 test("the verification action resumes copying the secret silently", () => {
   let passwordAttempts = 0;
-  const { calls, clipboardStrings, context, handoffCommands, largeTypeDisplays, pasted } = actionContext({
+  const { calls, clipboardStrings, context, handoffCommands, hides, largeTypeDisplays, pasted, performedActions } = actionContext({
       apwResponse(args) {
         const command = args.join(" ");
         if (command === "pw list example.com") {
@@ -565,6 +591,8 @@ test("the verification action resumes copying the secret silently", () => {
 
   assert.equal(result, undefined);
   assert.deepEqual(clipboardStrings, ["secret"]);
+  assert.deepEqual(performedActions, []);
+  assert.deepEqual(hides, [true]);
   assert.equal(largeTypeDisplays.length, 0);
   assert.deepEqual(pasted, []);
   assert.deepEqual(calls.map(apwArguments).slice(-4), [
@@ -673,7 +701,7 @@ test("selecting a suggestion submits its domain instead of its account label", (
 
   const results = context.run(suggestions[0].title);
   assert.equal(results[0].title, "Jacket API token");
-  assert.equal(results[1].title, "Paste password");
+  assert.equal(results[1].title, "Copy password");
 });
 
 test("a new search replaces stale authentication state instead of parsing it as a code", () => {

@@ -193,28 +193,6 @@ function showFields(record) {
 
   if (record.hasPassword) {
     fields.push({
-      title: "Paste password",
-      subtitle: record.domain,
-      badge: "Paste ↩",
-      action: "fetchAndPastePassword",
-      actionArgument: record,
-      actionReturnsItems: true,
-    });
-  }
-
-  if (record.hasOtp) {
-    fields.push({
-      title: "Paste verification code",
-      subtitle: record.domain,
-      badge: "Paste ↩",
-      action: "fetchAndPasteOtp",
-      actionArgument: record,
-      actionReturnsItems: true,
-    });
-  }
-
-  if (record.hasPassword) {
-    fields.push({
       title: "Copy password",
       subtitle: record.domain,
       badge: "Copy ↩",
@@ -230,6 +208,28 @@ function showFields(record) {
       subtitle: record.domain,
       badge: "Copy ↩",
       action: "copyOtp",
+      actionArgument: record,
+      actionReturnsItems: true,
+    });
+  }
+
+  if (record.hasPassword) {
+    fields.push({
+      title: "Paste password",
+      subtitle: record.domain,
+      badge: "Paste ↩",
+      action: "fetchAndPastePassword",
+      actionArgument: record,
+      actionReturnsItems: true,
+    });
+  }
+
+  if (record.hasOtp) {
+    fields.push({
+      title: "Paste verification code",
+      subtitle: record.domain,
+      badge: "Paste ↩",
+      action: "fetchAndPasteOtp",
       actionArgument: record,
       actionReturnsItems: true,
     });
@@ -303,7 +303,7 @@ function copyPassword(record) {
   if (!entry || !entry.password) {
     return notifyFailure("APW did not return the selected password.");
   }
-  LaunchBar.setClipboardString(String(entry.password));
+  copyValue(entry.password, "Password");
 }
 
 function copyOtp(record) {
@@ -323,7 +323,7 @@ function copyOtp(record) {
   if (!entry || !entry.code) {
     return notifyFailure("APW did not return the selected verification code.");
   }
-  LaunchBar.setClipboardString(String(entry.code));
+  copyValue(entry.code, "Verification code");
 }
 
 function pasteCopyFieldItem(title, subtitle, value, action) {
@@ -345,6 +345,12 @@ function pasteUsername(value) {
 function pasteValue(value, label) {
   if (!value) return notifyFailure(label + " is empty.");
   LaunchBar.paste(String(value));
+}
+
+function copyValue(value, label) {
+  if (!value) return notifyFailure(label + " is empty.");
+  LaunchBar.setClipboardString(String(value));
+  LaunchBar.hide();
 }
 
 function indexPath() {
