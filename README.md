@@ -69,13 +69,17 @@ stores passwords or verification codes. LaunchBar stores the index in its
 Action Support folder. Partial search finds only entries from previous
 complete-domain lookups. It does not search the full password store.
 
-### Clipboard history
+### Copy and Paste
 
-Pressing <kbd>Return</kbd> uses LaunchBar's paste function. LaunchBar and macOS
-Spotlight do not add values pasted this way to clipboard history. Pressing
-<kbd>⌘C</kbd> puts the value on the system clipboard, the same as copying text
-in any other app. Clear the clipboard afterward if you do not want the value
-to remain there.
+**Username:** Press <kbd>Return</kbd> to paste. Press <kbd>⌘C</kbd> to copy.
+
+**Copy** fields: Press <kbd>Return</kbd>. The action puts the value on the
+system clipboard. Paste with <kbd>⌘V</kbd>. The value stays on the clipboard
+until something else copies over it. Clipboard history may persist it.
+
+**Paste** fields: Press <kbd>Return</kbd>. LaunchBar pastes the value into the
+frontmost app. Use Paste when you want to be sure the secret does not stay on
+the system clipboard or in clipboard history.
 
 ## APW executable locations
 
